@@ -15,17 +15,6 @@ android {
         versionName = "1.0.0-codex"
     }
 
-    sourceSets {
-        getByName("main") {
-            java.srcDirs("src/main/java", "../app/src/main/java")
-            java.exclude(
-                "com/vhanma/lightcode/MainActivity.kt",
-                "com/vhanma/lightcode/SignalFactory.kt",
-                "com/vhanma/lightcode/LightSurfaceView.kt"
-            )
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
