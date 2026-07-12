@@ -1,0 +1,87 @@
+name: Build LightCode Codex APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'agent/lightcode-codex'
+    paths:
+      - 'lightcode-jar/codex/**'
+      - 'lightcode-jar/settings.gradle.kts'
+      - '.github/workflows/build-lightcode-codex-apk.yml'
+  pull_request:
+    branches:
+      - 'agent/lightcode-jar'
+      - main
+    paths:
+      - 'lightcode-jar/codex/**'
+      - 'lightcode-jar/settings.gradle.kts'
+      - '.github/workflows/build-lightcode-codex-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lightcode-jar
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build Codex debug APK
+        id: codex_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace :codex:assembleDebug 2>&1 | tee codex-build.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > codex-build-exit.txt
+          exit 0
+
+      - name: Upload complete compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCode-Codex-build-log
+          path: |
+            lightcode-jar/codex-build.log
+            lightcode-jar/codex-build-exit.txt
+          if-no-files-found: error
+
+      - name: Fail when compiler failed
+        shell: bash
+        run: |
+          code=$(cat codex-build-exit.txt)
+          if [ "$code" != "0" ]; then
+            echo "Codex compilation failed with exit code $code"
+            exit "$code"
+          fi
+
+      - name: Upload Codex APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCode-Codex-debug-apk
+          path: lightcode-jar/codex/build/outputs/apk/debug/codex-debug.apk
+          if-no-files-found: error

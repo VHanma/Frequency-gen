@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "LightCodeJar"
 include(":app")
+include(":codex")
