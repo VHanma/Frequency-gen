@@ -9,6 +9,12 @@ on:
     paths:
       - 'lightcode-jar/**'
       - '.github/workflows/build-lightcode-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'lightcode-jar/**'
+      - '.github/workflows/build-lightcode-apk.yml'
 
 permissions:
   contents: read
