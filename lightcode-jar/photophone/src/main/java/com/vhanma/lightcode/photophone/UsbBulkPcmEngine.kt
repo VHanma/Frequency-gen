@@ -15,8 +15,9 @@ import kotlin.concurrent.thread
 
 internal data class UsbLightTarget(
     val device: UsbDevice,
-    val usbInterface: UsbInterface,
-    val endpointOut: UsbEndpoint
+    val dataInterface: UsbInterface,
+    val endpointOut: UsbEndpoint,
+    val controlInterface: UsbInterface?
 ) {
     val description: String
         get() = buildString {
@@ -39,10 +40,17 @@ internal class UsbBulkPcmEngine(
     private val usbManager = context.getSystemService(UsbManager::class.java)
     @Volatile private var running = false
     private var connection: UsbDeviceConnection? = null
-    private var claimedInterface: UsbInterface? = null
 
     fun findTarget(): UsbLightTarget? {
+        val candidates = mutableListOf<Pair<Int, UsbLightTarget>>()
         for (device in usbManager.deviceList.values) {
+            var control: UsbInterface? = null
+            for (interfaceIndex in 0 until device.interfaceCount) {
+                val usbInterface = device.getInterface(interfaceIndex)
+                if (usbInterface.interfaceClass == UsbConstants.USB_CLASS_COMM) {
+                    control = usbInterface
+                }
+            }
             for (interfaceIndex in 0 until device.interfaceCount) {
                 val usbInterface = device.getInterface(interfaceIndex)
                 for (endpointIndex in 0 until usbInterface.endpointCount) {
@@ -51,12 +59,17 @@ internal class UsbBulkPcmEngine(
                         endpoint.type == UsbConstants.USB_ENDPOINT_XFER_BULK &&
                         endpoint.direction == UsbConstants.USB_DIR_OUT
                     ) {
-                        return UsbLightTarget(device, usbInterface, endpoint)
+                        val score = when (usbInterface.interfaceClass) {
+                            UsbConstants.USB_CLASS_CDC_DATA -> 3
+                            UsbConstants.USB_CLASS_VENDOR_SPEC -> 2
+                            else -> 1
+                        }
+                        candidates += score to UsbLightTarget(device, usbInterface, endpoint, control)
                     }
                 }
             }
         }
-        return null
+        return candidates.maxByOrNull { it.first }?.second
     }
 
     fun hasPermission(target: UsbLightTarget): Boolean = usbManager.hasPermission(target.device)
@@ -71,13 +84,20 @@ internal class UsbBulkPcmEngine(
 
         val deviceConnection = usbManager.openDevice(target.device)
             ?: error("Android could not open the USB light controller.")
-        check(deviceConnection.claimInterface(target.usbInterface, true)) {
+        check(deviceConnection.claimInterface(target.dataInterface, true)) {
             deviceConnection.close()
             "Android could not claim the USB bulk interface."
         }
 
+        val control = target.controlInterface
+        if (control != null && control.id != target.dataInterface.id) {
+            runCatching {
+                deviceConnection.claimInterface(control, true)
+                configureCdc(deviceConnection, control)
+            }
+        }
+
         connection = deviceConnection
-        claimedInterface = target.usbInterface
         running = true
         onStatus("USB bulk photophone active: ${target.description}. Media volume is bypassed.")
 
@@ -89,10 +109,12 @@ internal class UsbBulkPcmEngine(
                 onStatus("USB bulk photophone stopped: ${error.message}")
             } finally {
                 running = false
-                runCatching { deviceConnection.releaseInterface(target.usbInterface) }
+                runCatching { deviceConnection.releaseInterface(target.dataInterface) }
+                if (control != null && control.id != target.dataInterface.id) {
+                    runCatching { deviceConnection.releaseInterface(control) }
+                }
                 deviceConnection.close()
                 connection = null
-                claimedInterface = null
                 onFinished()
             }
         }
@@ -100,6 +122,33 @@ internal class UsbBulkPcmEngine(
 
     fun stop() {
         running = false
+    }
+
+    private fun configureCdc(connection: UsbDeviceConnection, control: UsbInterface) {
+        val lineCoding = ByteBuffer.allocate(7).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(115_200)
+            .put(0)
+            .put(0)
+            .put(8)
+            .array()
+        connection.controlTransfer(
+            0x21,
+            0x20,
+            0,
+            control.id,
+            lineCoding,
+            lineCoding.size,
+            1_000
+        )
+        connection.controlTransfer(
+            0x21,
+            0x22,
+            0x03,
+            control.id,
+            null,
+            0,
+            1_000
+        )
     }
 
     private fun sendConfig(connection: UsbDeviceConnection, endpoint: UsbEndpoint) {
