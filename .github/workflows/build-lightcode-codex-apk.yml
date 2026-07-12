@@ -50,7 +50,34 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build Codex debug APK
-        run: gradle --no-daemon :codex:assembleDebug
+        id: codex_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace :codex:assembleDebug 2>&1 | tee codex-build.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > codex-build-exit.txt
+          exit 0
+
+      - name: Upload complete compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCode-Codex-build-log
+          path: |
+            lightcode-jar/codex-build.log
+            lightcode-jar/codex-build-exit.txt
+          if-no-files-found: error
+
+      - name: Fail when compiler failed
+        shell: bash
+        run: |
+          code=$(cat codex-build-exit.txt)
+          if [ "$code" != "0" ]; then
+            echo "Codex compilation failed with exit code $code"
+            exit "$code"
+          fi
 
       - name: Upload Codex APK
         uses: actions/upload-artifact@v4
