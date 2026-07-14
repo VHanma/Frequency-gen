@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vaan.ultracarrier.audio.DspMath
 import com.vaan.ultracarrier.audio.ModulationMode
+import com.vaan.ultracarrier.audio.PrivacyMode
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -68,10 +69,11 @@ class MainActivity : ComponentActivity() {
                     onCarrierChanged = controller::setCarrier,
                     onDepthChanged = controller::setDepth,
                     onModeChanged = controller::setMode,
-                    onSynthesize = controller::synthesizeAndTransmit,
-                    onTransmitFile = controller::transmitLoaded,
+                    onPrivacyChanged = controller::setPrivacyMode,
+                    onPrepareText = controller::synthesizeAndPrepare,
+                    onTransmit = controller::transmitLoaded,
                     onStop = controller::stopTransmission,
-                    onMaxVolume = controller::setMediaVolumeMaximum
+                    onPrivacyVolume = controller::setPrivacyVolume
                 )
             }
         }
@@ -89,7 +91,7 @@ private fun UltraCarrierTheme(content: @Composable () -> Unit) {
         colorScheme = darkColorScheme(
             primary = Color(0xFF00E5FF),
             secondary = Color(0xFF9C6BFF),
-            background = Color(0xFF070B14),
+            background = Color(0xFF050912),
             surface = Color(0xFF111827),
             onBackground = Color(0xFFE8F0FF),
             onSurface = Color(0xFFE8F0FF)
@@ -107,10 +109,11 @@ private fun UltraCarrierScreen(
     onCarrierChanged: (Float) -> Unit,
     onDepthChanged: (Float) -> Unit,
     onModeChanged: (ModulationMode) -> Unit,
-    onSynthesize: () -> Unit,
-    onTransmitFile: () -> Unit,
+    onPrivacyChanged: (PrivacyMode) -> Unit,
+    onPrepareText: () -> Unit,
+    onTransmit: () -> Unit,
     onStop: () -> Unit,
-    onMaxVolume: () -> Unit
+    onPrivacyVolume: () -> Unit
 ) {
     val hardware = state.hardware
     val minCarrier = hardware?.carrierMinHz ?: 15_000f
@@ -128,9 +131,9 @@ private fun UltraCarrierScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("ULTRACARRIER LAB", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("ULTRACARRIER BEAM", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "Text and uploaded audio are converted into the changing envelope of the carrier.",
+            "A privacy-focused clone that suppresses audible sideways leakage before transmission.",
             color = Color(0xFF9DB0D0)
         )
 
@@ -139,35 +142,52 @@ private fun UltraCarrierScreen(
             body = hardware?.detail ?: "Checking connected outputs and native sample rate."
         )
 
+        ControlCard(title = "Privacy profile") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PrivacyMode.entries.forEach { profile ->
+                    FilterChip(
+                        selected = state.privacyMode == profile,
+                        onClick = { onPrivacyChanged(profile) },
+                        label = { Text(profile.label) }
+                    )
+                }
+            }
+            Text(state.privacyMode.description, color = Color(0xFF9DB0D0))
+        }
+
         OutlinedTextField(
             value = state.text,
             onValueChange = onTextChanged,
-            modifier = Modifier.fillMaxWidth().height(150.dp),
+            modifier = Modifier.fillMaxWidth().height(140.dp),
             label = { Text("Text to convert into speech") },
             placeholder = { Text("Type a phrase or paragraph…") }
         )
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onSynthesize, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
-                Text("Use This Text")
+            Button(onClick = onPrepareText, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
+                Text("Prepare Text")
             }
             OutlinedButton(onClick = onPickFile, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
                 Text("Choose File")
             }
         }
-        Text("Choosing a file now starts transmission automatically.", color = Color(0xFF9DB0D0))
 
         Text(
-            state.loadedName?.let { "Active source: $it" } ?: "Active source: none",
+            state.loadedName?.let { "Ready source: $it" } ?: "Ready source: none",
             color = Color(0xFFB8C7E3)
         )
+
         Button(
-            onClick = onTransmitFile,
+            onClick = onTransmit,
             enabled = state.loadedAudio != null && !state.isBusy,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().height(58.dp)
         ) {
-            Text("Transmit Active Source Again")
+            Text("AIM & TRANSMIT", fontWeight = FontWeight.Black)
         }
+        Text(
+            "Point the phone's actual speaker opening at the listener before pressing the button.",
+            color = Color(0xFF9DB0D0)
+        )
 
         ControlCard(title = "Carrier frequency") {
             Text("${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
@@ -177,12 +197,12 @@ private fun UltraCarrierScreen(
                 valueRange = minCarrier..maxCarrier
             )
             Text(
-                "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Message bandwidth ${predictedBandwidth.roundToInt()} Hz.",
+                "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available message bandwidth ${predictedBandwidth.roundToInt()} Hz.",
                 color = Color(0xFF9DB0D0)
             )
         }
 
-        ControlCard(title = "Encoding mode") {
+        ControlCard(title = "Leak suppression and encoding") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModulationMode.entries.forEach { mode ->
                     FilterChip(
@@ -193,25 +213,29 @@ private fun UltraCarrierScreen(
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text("Source strength ${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+            Text("Target strength ${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
             Slider(value = state.depth, onValueChange = onDepthChanged, valueRange = 0.05f..1f)
+            Text(
+                "Lower strength leaks less sideways. Phone Beam automatically narrows speech bandwidth and uses reduced carrier.",
+                color = Color(0xFF9DB0D0)
+            )
         }
 
-        ControlCard(title = "Message waveform being encoded") {
+        ControlCard(title = "Message waveform") {
             WaveformCanvas(waveform)
         }
 
         state.report?.let { report ->
             InfoCard(
-                title = "Active transmission",
+                title = "Active ${report.privacyMode.label}",
                 body = "${report.actualSampleRate} Hz PCM float • ${report.actualCarrierHz.roundToInt()} Hz carrier • " +
-                    "${report.messageBandwidthHz.roundToInt()} Hz message bandwidth • ${report.routedDeviceName}"
+                    "${report.messageBandwidthHz.roundToInt()} Hz message bandwidth • output ${(report.outputGain * 100).roundToInt()}% • ${report.routedDeviceName}"
             )
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onMaxVolume, modifier = Modifier.weight(1f)) {
-                Text("Set Media Volume Max")
+            OutlinedButton(onClick = onPrivacyVolume, modifier = Modifier.weight(1f)) {
+                Text("Privacy Volume")
             }
             Button(onClick = onStop, enabled = state.isTransmitting || state.isBusy, modifier = Modifier.weight(1f)) {
                 Text("Stop")
@@ -235,7 +259,7 @@ private fun UltraCarrierScreen(
         }
 
         Text(
-            "The graph now shows the text or file signal, not the nearly identical high-frequency carrier waves.",
+            "Phone Beam reduces audible leakage but cannot guarantee that nearby people hear nothing. A truly narrow audio beam requires a physically larger ultrasonic transducer array. Avoid maximum volume and never aim prolonged output directly into an ear.",
             color = Color(0xFF7F92B5),
             style = MaterialTheme.typography.bodySmall
         )
