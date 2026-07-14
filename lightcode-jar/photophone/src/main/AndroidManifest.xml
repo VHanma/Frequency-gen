@@ -9,7 +9,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.LightCodePhotophone">
         <activity
-            android:name=".MainActivity"
+            android:name=".V2Activity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true"
             android:screenOrientation="sensorPortrait">
