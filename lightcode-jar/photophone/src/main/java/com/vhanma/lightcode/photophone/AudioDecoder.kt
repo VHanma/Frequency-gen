@@ -39,7 +39,7 @@ internal object AudioDecoder {
         var sampleRate = selectedFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
         var channels = selectedFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceAtLeast(1)
         var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
-        val samples = FloatBuilder()
+        val samples = ShortBuilder()
         val info = MediaCodec.BufferInfo()
         var inputEnded = false
         var outputEnded = false
@@ -91,15 +91,15 @@ internal object AudioDecoder {
                                 repeat(frameCount) {
                                     var sum = 0f
                                     repeat(channels) { sum += buffer.get() }
-                                    samples.add(sum / channels.toFloat())
+                                    samples.add(SignalCore.floatToPcm(sum / channels.toFloat()))
                                 }
                             } else {
                                 val buffer = output.asShortBuffer()
                                 val frameCount = buffer.remaining() / channels
                                 repeat(frameCount) {
-                                    var sum = 0f
-                                    repeat(channels) { sum += buffer.get().toFloat() / 32768f }
-                                    samples.add(sum / channels.toFloat())
+                                    var sum = 0
+                                    repeat(channels) { sum += buffer.get().toInt() }
+                                    samples.add((sum / channels).coerceIn(-32767, 32767).toShort())
                                 }
                             }
                         }
@@ -119,20 +119,20 @@ internal object AudioDecoder {
         return OpticalProgram(mono, sampleRate, label)
     }
 
-    private class FloatBuilder(initialCapacity: Int = 524_288) {
-        private var values = FloatArray(initialCapacity)
+    private class ShortBuilder(initialCapacity: Int = 524_288) {
+        private var values = ShortArray(initialCapacity)
         private var size = 0
 
-        fun add(value: Float) {
+        fun add(value: Short) {
             require(size < MAX_MONO_SAMPLES) {
-                "This build holds the song in memory and supports roughly eight minutes at 48 kHz."
+                "This memory-efficient build supports roughly eight minutes at 48 kHz."
             }
             if (size == values.size) {
                 values = values.copyOf((values.size * 2).coerceAtMost(MAX_MONO_SAMPLES))
             }
-            values[size++] = value.coerceIn(-1f, 1f)
+            values[size++] = value
         }
 
-        fun toArray(): FloatArray = values.copyOf(size)
+        fun toArray(): ShortArray = values.copyOf(size)
     }
 }
