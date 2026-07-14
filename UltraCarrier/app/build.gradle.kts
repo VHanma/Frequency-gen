@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.vaan.ultracarrier"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.vaan.ultracarrier"
