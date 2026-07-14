@@ -9,8 +9,23 @@ data class PcmAudio(
 )
 
 enum class ModulationMode(val label: String) {
-    AM("Strong envelope AM"),
-    DSB_SC("Double-sideband suppressed carrier")
+    AM("AM envelope"),
+    DSB_SC("Reduced-carrier DSB")
+}
+
+enum class PrivacyMode(val label: String, val description: String) {
+    PHONE_BEAM(
+        "Phone Beam",
+        "Reduces audible leakage and uses the highest safe phone carrier. The phone speaker still limits beam width."
+    ),
+    STANDARD(
+        "Standard",
+        "Strongest phone output with less leakage suppression."
+    ),
+    EXTERNAL_ARRAY(
+        "External Array",
+        "For a USB DAC and ultrasonic transducer array. This is the path to a genuinely narrow beam."
+    )
 }
 
 data class HardwareMode(
@@ -27,5 +42,7 @@ data class TransmissionReport(
     val actualSampleRate: Int,
     val actualCarrierHz: Float,
     val messageBandwidthHz: Float,
-    val routedDeviceName: String
+    val routedDeviceName: String,
+    val privacyMode: PrivacyMode,
+    val outputGain: Float
 )
