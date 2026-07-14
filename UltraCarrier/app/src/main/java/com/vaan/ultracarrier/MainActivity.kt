@@ -130,7 +130,7 @@ private fun UltraCarrierScreen(
     ) {
         Text("ULTRACARRIER LAB", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "TTS and audio-file modulation through a streaming PCM-float AudioTrack.",
+            "Text and uploaded audio are converted into the changing envelope of the carrier.",
             color = Color(0xFF9DB0D0)
         )
 
@@ -143,21 +143,22 @@ private fun UltraCarrierScreen(
             value = state.text,
             onValueChange = onTextChanged,
             modifier = Modifier.fillMaxWidth().height(150.dp),
-            label = { Text("Text to synthesize") },
-            placeholder = { Text("Type a phrase, paragraph, or test pattern…") }
+            label = { Text("Text to convert into speech") },
+            placeholder = { Text("Type a phrase or paragraph…") }
         )
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onSynthesize, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
-                Text("Synthesize & Transmit")
+                Text("Use This Text")
             }
             OutlinedButton(onClick = onPickFile, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
-                Text("Upload File")
+                Text("Choose File")
             }
         }
+        Text("Choosing a file now starts transmission automatically.", color = Color(0xFF9DB0D0))
 
         Text(
-            state.loadedName?.let { "Loaded: $it" } ?: "Loaded: none",
+            state.loadedName?.let { "Active source: $it" } ?: "Active source: none",
             color = Color(0xFFB8C7E3)
         )
         Button(
@@ -165,7 +166,7 @@ private fun UltraCarrierScreen(
             enabled = state.loadedAudio != null && !state.isBusy,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Transmit Loaded Audio")
+            Text("Transmit Active Source Again")
         }
 
         ControlCard(title = "Carrier frequency") {
@@ -176,12 +177,12 @@ private fun UltraCarrierScreen(
                 valueRange = minCarrier..maxCarrier
             )
             Text(
-                "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Estimated message bandwidth ${predictedBandwidth.roundToInt()} Hz.",
+                "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Message bandwidth ${predictedBandwidth.roundToInt()} Hz.",
                 color = Color(0xFF9DB0D0)
             )
         }
 
-        ControlCard(title = "Modulation") {
+        ControlCard(title = "Encoding mode") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ModulationMode.entries.forEach { mode ->
                     FilterChip(
@@ -192,17 +193,17 @@ private fun UltraCarrierScreen(
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text("Depth ${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+            Text("Source strength ${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
             Slider(value = state.depth, onValueChange = onDepthChanged, valueRange = 0.05f..1f)
         }
 
-        ControlCard(title = "Output waveform") {
+        ControlCard(title = "Message waveform being encoded") {
             WaveformCanvas(waveform)
         }
 
         state.report?.let { report ->
             InfoCard(
-                title = "Active stream",
+                title = "Active transmission",
                 body = "${report.actualSampleRate} Hz PCM float • ${report.actualCarrierHz.roundToInt()} Hz carrier • " +
                     "${report.messageBandwidthHz.roundToInt()} Hz message bandwidth • ${report.routedDeviceName}"
             )
@@ -234,7 +235,7 @@ private fun UltraCarrierScreen(
         }
 
         Text(
-            "Ultrasonic output depends on the DAC, amplifier, speaker, route, and Android mixer. Hardware nonlinearities can create audible aliases. The app never raises volume automatically.",
+            "The graph now shows the text or file signal, not the nearly identical high-frequency carrier waves.",
             color = Color(0xFF7F92B5),
             style = MaterialTheme.typography.bodySmall
         )
