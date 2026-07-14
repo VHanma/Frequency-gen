@@ -1,0 +1,64 @@
+name: Build UltraCarrier APK
+
+on:
+  push:
+    branches:
+      - ultracarrier-apk-build
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out build branch
+        uses: actions/checkout@v4
+
+      - name: Restore complete Android project
+        shell: bash
+        run: |
+          cat ultracarrier_parts/part*.b64 > UltraCarrier_Project.zip.b64
+          base64 --decode UltraCarrier_Project.zip.b64 > UltraCarrier_Android_Project.zip
+          echo "4e2121e3b06b898b3548d99f01e9e60ff9c8115fe462b9fda6d15dda41f9b817  UltraCarrier_Android_Project.zip" | sha256sum --check
+          unzip -q UltraCarrier_Android_Project.zip
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: yes | sdkmanager "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Build installable debug APK
+        working-directory: UltraCarrier
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Rename APK
+        shell: bash
+        run: cp UltraCarrier/app/build/outputs/apk/debug/app-debug.apk UltraCarrier.apk
+
+      - name: Upload finished APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltraCarrier-installable-apk
+          path: UltraCarrier.apk
+          if-no-files-found: error
+          retention-days: 7
