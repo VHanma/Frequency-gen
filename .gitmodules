@@ -1,0 +1,6 @@
+[submodule "QuietShare"]
+	path = QuietShare
+	url = https://github.com/alexbirkett/QuietShare.git
+[submodule "org.quietmodem.Quiet"]
+	path = org.quietmodem.Quiet
+	url = https://github.com/quiet/org.quietmodem.Quiet.git
