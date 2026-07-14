@@ -57,4 +57,24 @@ object DspMath {
             return y0.toFloat().coerceIn(-1f, 1f)
         }
     }
+
+    class HighPass(sampleRate: Int, cutoffHz: Float) {
+        private val alpha: Float
+        private var previousInput = 0f
+        private var previousOutput = 0f
+
+        init {
+            val cutoff = cutoffHz.coerceIn(20f, sampleRate * 0.2f)
+            val rc = 1.0 / (2.0 * PI * cutoff)
+            val dt = 1.0 / sampleRate
+            alpha = (rc / (rc + dt)).toFloat()
+        }
+
+        fun process(input: Float): Float {
+            val output = alpha * (previousOutput + input - previousInput)
+            previousInput = input
+            previousOutput = output
+            return output.coerceIn(-1f, 1f)
+        }
+    }
 }
