@@ -40,14 +40,34 @@ jobs:
           gradle-version: "9.4.1"
 
       - name: Build installable debug APK
+        id: gradle_build
         working-directory: UltraCarrier
-        run: gradle :app:assembleDebug --stacktrace
+        shell: bash
+        run: |
+          set +e
+          gradle :app:assembleDebug --stacktrace > ../gradle-build.log 2>&1
+          status=$?
+          grep -E "^(e:|.*error:|FAILURE:|\\* What went wrong:|> Task .* FAILED)" ../gradle-build.log | tail -n 250 > ../gradle-errors.txt || true
+          exit $status
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltraCarrier-build-diagnostics
+          path: |
+            gradle-build.log
+            gradle-errors.txt
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Rename APK
+        if: success()
         shell: bash
         run: cp UltraCarrier/app/build/outputs/apk/debug/app-debug.apk UltraCarrier.apk
 
       - name: Upload finished APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: UltraCarrier-installable-apk
