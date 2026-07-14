@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -30,6 +31,7 @@ class AudioTransmitter {
         requestedCarrierHz: Float,
         depth: Float,
         mode: ModulationMode,
+        privacyMode: PrivacyMode,
         preferredDevice: AudioDeviceInfo?,
         onStarted: (TransmissionReport) -> Unit,
         onWaveform: (FloatArray) -> Unit
@@ -41,12 +43,22 @@ class AudioTransmitter {
         activeTrack = track
 
         val carrier = DspMath.clampCarrier(sampleRate, requestedCarrierHz)
-        val bandwidth = DspMath.safeMessageBandwidth(sampleRate, carrier)
+        val maximumBandwidth = DspMath.safeMessageBandwidth(sampleRate, carrier)
+        val bandwidth = when (privacyMode) {
+            PrivacyMode.PHONE_BEAM -> min(maximumBandwidth, 3_200f)
+            PrivacyMode.EXTERNAL_ARRAY -> min(maximumBandwidth, 6_000f)
+            PrivacyMode.STANDARD -> maximumBandwidth
+        }
         val lowPass = DspMath.LowPass(sampleRate, bandwidth)
+        val highPass = DspMath.HighPass(
+            sampleRate,
+            if (privacyMode == PrivacyMode.PHONE_BEAM) 260f else 45f
+        )
         val sourceStep = pcm.sampleRate.toDouble() / sampleRate
         val totalOutputFrames = (pcm.samples.size / sourceStep).toLong().coerceAtLeast(1L)
         val phaseStep = 2.0 * PI * carrier / sampleRate
-        val fadeFrames = max(1, (sampleRate * 0.02).toInt())
+        val fadeSeconds = if (privacyMode == PrivacyMode.PHONE_BEAM) 0.08 else 0.025
+        val fadeFrames = max(1, (sampleRate * fadeSeconds).toInt())
         val block = FloatArray(BLOCK_FRAMES)
         val messageMonitor = FloatArray(BLOCK_FRAMES)
         var sourcePosition = 0.0
@@ -54,37 +66,62 @@ class AudioTransmitter {
         var phase = 0.0
         var waveformCounter = 0
         val effectiveDepth = depth.coerceIn(0.05f, 1f)
+        val effectiveMode = if (privacyMode == PrivacyMode.PHONE_BEAM) ModulationMode.DSB_SC else mode
+        val outputGain = when (privacyMode) {
+            PrivacyMode.PHONE_BEAM -> 0.18f + 0.30f * effectiveDepth
+            PrivacyMode.EXTERNAL_ARRAY -> 0.50f + 0.35f * effectiveDepth
+            PrivacyMode.STANDARD -> 0.58f + 0.40f * effectiveDepth
+        }
 
         try {
             track.play()
             val routeName = track.routedDevice?.productName?.toString().orEmpty()
                 .ifBlank { preferredDevice?.productName?.toString().orEmpty() }
                 .ifBlank { "system-selected output" }
-            onStarted(TransmissionReport(sampleRate, carrier, bandwidth, routeName))
+            onStarted(
+                TransmissionReport(
+                    actualSampleRate = sampleRate,
+                    actualCarrierHz = carrier,
+                    messageBandwidthHz = bandwidth,
+                    routedDeviceName = routeName,
+                    privacyMode = privacyMode,
+                    outputGain = outputGain
+                )
+            )
 
             while (!stopped.get() && outputFrame < totalOutputFrames) {
                 val frames = min(BLOCK_FRAMES.toLong(), totalOutputFrames - outputFrame).toInt()
                 for (i in 0 until frames) {
                     val rawMessage = DspMath.interpolate(pcm.samples, sourcePosition)
-                    val filtered = lowPass.process(rawMessage)
-                    val message = tanh((filtered * 2.8f).toDouble()).toFloat().coerceIn(-1f, 1f)
+                    val bandLimited = highPass.process(lowPass.process(rawMessage))
+                    val gated = if (privacyMode == PrivacyMode.PHONE_BEAM && abs(bandLimited) < 0.008f) 0f else bandLimited
+                    val drive = if (privacyMode == PrivacyMode.PHONE_BEAM) 3.4f else 2.8f
+                    val message = tanh((gated * drive).toDouble()).toFloat().coerceIn(-1f, 1f)
                     val carrierSample = cos(phase).toFloat()
                     val fadeIn = (outputFrame + i).toFloat() / fadeFrames
                     val fadeOut = (totalOutputFrames - (outputFrame + i)).toFloat() / fadeFrames
                     val fade = min(1f, min(fadeIn, fadeOut)).coerceAtLeast(0f)
 
-                    val modulated = when (mode) {
+                    val encoded = when (effectiveMode) {
                         ModulationMode.AM -> {
                             val encodedEnvelope = ((message + 1f) * 0.5f).coerceIn(0f, 1f)
-                            val floor = 0.03f + (1f - effectiveDepth) * 0.45f
-                            val amplitude = floor + (0.95f - floor) * encodedEnvelope
-                            carrierSample * amplitude
+                            val floor = if (privacyMode == PrivacyMode.PHONE_BEAM) 0.07f else 0.03f + (1f - effectiveDepth) * 0.45f
+                            val ceiling = if (privacyMode == PrivacyMode.PHONE_BEAM) 0.48f else 0.95f
+                            carrierSample * (floor + (ceiling - floor) * encodedEnvelope)
                         }
 
-                        ModulationMode.DSB_SC -> carrierSample * message * (0.25f + 0.7f * effectiveDepth)
+                        ModulationMode.DSB_SC -> {
+                            if (privacyMode == PrivacyMode.PHONE_BEAM) {
+                                val pilot = 0.10f
+                                val sidebands = message * (0.22f + 0.30f * effectiveDepth)
+                                carrierSample * (pilot + sidebands)
+                            } else {
+                                carrierSample * message * (0.25f + 0.70f * effectiveDepth)
+                            }
+                        }
                     }
 
-                    block[i] = (modulated * fade).coerceIn(-0.98f, 0.98f)
+                    block[i] = (encoded * outputGain * fade).coerceIn(-0.98f, 0.98f)
                     messageMonitor[i] = message
                     sourcePosition += sourceStep
                     phase += phaseStep
