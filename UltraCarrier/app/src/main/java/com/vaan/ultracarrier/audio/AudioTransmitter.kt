@@ -9,6 +9,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.tanh
 
 class AudioTransmitter {
     private val stopped = AtomicBoolean(true)
@@ -36,9 +37,7 @@ class AudioTransmitter {
         stop()
         stopped.set(false)
 
-        val trackAndRate = createBestTrack(requestedSampleRate, preferredDevice)
-        val track = trackAndRate.first
-        val sampleRate = trackAndRate.second
+        val (track, sampleRate) = createBestTrack(requestedSampleRate, preferredDevice)
         activeTrack = track
 
         val carrier = DspMath.clampCarrier(sampleRate, requestedCarrierHz)
@@ -49,38 +48,44 @@ class AudioTransmitter {
         val phaseStep = 2.0 * PI * carrier / sampleRate
         val fadeFrames = max(1, (sampleRate * 0.02).toInt())
         val block = FloatArray(BLOCK_FRAMES)
+        val messageMonitor = FloatArray(BLOCK_FRAMES)
         var sourcePosition = 0.0
         var outputFrame = 0L
         var phase = 0.0
         var waveformCounter = 0
+        val effectiveDepth = depth.coerceIn(0.05f, 1f)
 
         try {
             track.play()
             val routeName = track.routedDevice?.productName?.toString().orEmpty()
                 .ifBlank { preferredDevice?.productName?.toString().orEmpty() }
                 .ifBlank { "system-selected output" }
-            onStarted(
-                TransmissionReport(
-                    actualSampleRate = sampleRate,
-                    actualCarrierHz = carrier,
-                    messageBandwidthHz = bandwidth,
-                    routedDeviceName = routeName
-                )
-            )
+            onStarted(TransmissionReport(sampleRate, carrier, bandwidth, routeName))
+
             while (!stopped.get() && outputFrame < totalOutputFrames) {
                 val frames = min(BLOCK_FRAMES.toLong(), totalOutputFrames - outputFrame).toInt()
                 for (i in 0 until frames) {
                     val rawMessage = DspMath.interpolate(pcm.samples, sourcePosition)
-                    val message = lowPass.process(rawMessage)
+                    val filtered = lowPass.process(rawMessage)
+                    val message = tanh((filtered * 2.8f).toDouble()).toFloat().coerceIn(-1f, 1f)
                     val carrierSample = cos(phase).toFloat()
                     val fadeIn = (outputFrame + i).toFloat() / fadeFrames
                     val fadeOut = (totalOutputFrames - (outputFrame + i)).toFloat() / fadeFrames
-                    val envelope = min(1f, min(fadeIn, fadeOut)).coerceAtLeast(0f)
+                    val fade = min(1f, min(fadeIn, fadeOut)).coerceAtLeast(0f)
+
                     val modulated = when (mode) {
-                        ModulationMode.AM -> carrierSample * (1f + depth.coerceIn(0f, 1f) * message) * 0.42f
-                        ModulationMode.DSB_SC -> carrierSample * message * depth.coerceIn(0f, 1f) * 0.82f
+                        ModulationMode.AM -> {
+                            val encodedEnvelope = ((message + 1f) * 0.5f).coerceIn(0f, 1f)
+                            val floor = 0.03f + (1f - effectiveDepth) * 0.45f
+                            val amplitude = floor + (0.95f - floor) * encodedEnvelope
+                            carrierSample * amplitude
+                        }
+
+                        ModulationMode.DSB_SC -> carrierSample * message * (0.25f + 0.7f * effectiveDepth)
                     }
-                    block[i] = (modulated * envelope).coerceIn(-0.98f, 0.98f)
+
+                    block[i] = (modulated * fade).coerceIn(-0.98f, 0.98f)
+                    messageMonitor[i] = message
                     sourcePosition += sourceStep
                     phase += phaseStep
                     if (phase >= 2.0 * PI) phase -= 2.0 * PI
@@ -91,9 +96,7 @@ class AudioTransmitter {
                 outputFrame += written
 
                 waveformCounter++
-                if (waveformCounter % 3 == 0) {
-                    onWaveform(decimate(block, written, 512))
-                }
+                if (waveformCounter % 2 == 0) onWaveform(decimate(messageMonitor, written, 512))
             }
         } finally {
             runCatching { track.stop() }
