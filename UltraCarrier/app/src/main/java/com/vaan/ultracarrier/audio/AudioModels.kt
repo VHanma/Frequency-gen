@@ -9,7 +9,7 @@ data class PcmAudio(
 )
 
 enum class ModulationMode(val label: String) {
-    AM("AM envelope"),
+    AM("Strong envelope AM"),
     DSB_SC("Double-sideband suppressed carrier")
 }
 
