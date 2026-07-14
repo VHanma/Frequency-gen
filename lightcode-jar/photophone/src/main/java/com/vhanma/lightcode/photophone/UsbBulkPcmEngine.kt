@@ -8,6 +8,7 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
+import android.hardware.usb.UsbRequest
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.CRC32
@@ -31,15 +32,26 @@ internal data class UsbLightTarget(
         }
 }
 
+internal data class UsbEfficiencySnapshot(
+    val packetsCompleted: Long,
+    val samplesQueued: Long,
+    val queueDepth: Int,
+    val throughputBytesPerSecond: Long,
+    val sequence: Int,
+    val asynchronous: Boolean
+)
+
 internal class UsbBulkPcmEngine(
     context: Context,
     private val program: OpticalProgram,
     private val onStatus: (String) -> Unit,
-    private val onFinished: () -> Unit
+    private val onFinished: () -> Unit,
+    private val onEfficiency: (UsbEfficiencySnapshot) -> Unit = {}
 ) {
     private val usbManager = context.getSystemService(UsbManager::class.java)
     @Volatile private var running = false
     private var connection: UsbDeviceConnection? = null
+    private val activeRequests = mutableListOf<UsbRequest>()
 
     fun findTarget(): UsbLightTarget? {
         val candidates = mutableListOf<Pair<Int, UsbLightTarget>>()
@@ -99,16 +111,20 @@ internal class UsbBulkPcmEngine(
 
         connection = deviceConnection
         running = true
-        onStatus("USB bulk photophone active: ${target.description}. Media volume is bypassed.")
+        onStatus("USB asynchronous photophone active: ${target.description}. Two packet buffers are pipelined and media volume is bypassed.")
 
-        thread(name = "PhotophoneUsbBulk") {
+        thread(name = "PhotophoneUsbAsync") {
             try {
                 sendConfig(deviceConnection, target.endpointOut)
-                streamPcm(deviceConnection, target.endpointOut)
+                streamPcmAsynchronously(deviceConnection, target.endpointOut)
             } catch (error: Throwable) {
-                onStatus("USB bulk photophone stopped: ${error.message}")
+                if (running) onStatus("USB photophone stopped: ${error.message}")
             } finally {
                 running = false
+                synchronized(activeRequests) {
+                    activeRequests.forEach { runCatching { it.close() } }
+                    activeRequests.clear()
+                }
                 runCatching { deviceConnection.releaseInterface(target.dataInterface) }
                 if (control != null && control.id != target.dataInterface.id) {
                     runCatching { deviceConnection.releaseInterface(control) }
@@ -122,6 +138,9 @@ internal class UsbBulkPcmEngine(
 
     fun stop() {
         running = false
+        synchronized(activeRequests) {
+            activeRequests.forEach { runCatching { it.cancel() } }
+        }
     }
 
     private fun configureCdc(connection: UsbDeviceConnection, control: UsbInterface) {
@@ -159,68 +178,161 @@ internal class UsbBulkPcmEngine(
         packet.putInt(16)
         packet.putInt(2_048)
         packet.putInt(250_000)
-        transferAll(connection, endpoint, packet.array())
+        val bytes = packet.array()
+        val sent = connection.bulkTransfer(endpoint, bytes, bytes.size, 1_500)
+        if (sent != bytes.size) error("USB configuration packet was incomplete: $sent/${bytes.size} bytes.")
     }
 
-    private fun streamPcm(connection: UsbDeviceConnection, endpoint: UsbEndpoint) {
+    private data class RequestSlot(
+        val request: UsbRequest,
+        val buffer: ByteBuffer,
+        val slot: Int
+    )
+
+    private data class FillResult(
+        val nextSampleIndex: Long,
+        val sourceEnded: Boolean,
+        val realSamples: Int
+    )
+
+    private fun streamPcmAsynchronously(
+        connection: UsbDeviceConnection,
+        endpoint: UsbEndpoint
+    ) {
         val outputRate = 48_000
         val samplesPerPacket = 480
+        val packetBytes = 24 + samplesPerPacket * 2
+        val slots = Array(2) { slotIndex ->
+            val request = UsbRequest()
+            check(request.initialize(connection, endpoint)) { "USB request $slotIndex could not initialize." }
+            val slot = RequestSlot(
+                request = request,
+                buffer = ByteBuffer.allocateDirect(packetBytes).order(ByteOrder.LITTLE_ENDIAN),
+                slot = slotIndex
+            )
+            request.clientData = slot
+            slot
+        }
+        synchronized(activeRequests) {
+            activeRequests.clear()
+            activeRequests.addAll(slots.map { it.request })
+        }
+
         var sequence = 0
-        var outputSampleIndex = 0L
+        var sampleIndex = 0L
+        var sourceEnded = false
+        var pending = 0
+        var packetsCompleted = 0L
+        var samplesQueued = 0L
+        val startedNanos = System.nanoTime()
 
-        while (running) {
-            val packet = ByteBuffer
-                .allocate(24 + samplesPerPacket * 2)
-                .order(ByteOrder.LITTLE_ENDIAN)
-            packet.put(byteArrayOf('L'.code.toByte(), 'P'.code.toByte(), 'P'.code.toByte(), '1'.code.toByte()))
-            packet.putInt(sequence)
-            packet.putInt(outputRate)
-            packet.putShort(samplesPerPacket.toShort())
-            packet.putShort(0)
-            val crcPosition = packet.position()
-            packet.putInt(0)
-            packet.putInt(0)
+        for (slot in slots) {
+            if (sourceEnded || !running) break
+            val result = fillPacket(slot.buffer, sequence, sampleIndex, outputRate, samplesPerPacket)
+            sampleIndex = result.nextSampleIndex
+            sourceEnded = result.sourceEnded
+            samplesQueued += result.realSamples
+            check(slot.request.queue(slot.buffer)) { "USB request ${slot.slot} could not be queued." }
+            pending++
+            sequence++
+        }
 
-            val payloadStart = packet.position()
-            repeat(samplesPerPacket) {
-                val seconds = outputSampleIndex.toDouble() / outputRate.toDouble()
-                if (!program.loop && seconds >= program.durationSeconds) {
-                    running = false
-                }
-                val sample = if (running || program.loop) {
-                    SignalCore.sampleAt(program, seconds)
-                } else {
-                    0f
-                }
-                val pcm = (sample.coerceIn(-1f, 1f) * 32767f).toInt().toShort()
-                packet.putShort(pcm)
-                outputSampleIndex++
+        while (running && pending > 0) {
+            val completed = connection.requestWait()
+                ?: error("USB request completion returned null.")
+            pending--
+            packetsCompleted++
+            val slot = completed.clientData as? RequestSlot
+                ?: error("USB request lost its packet slot.")
+
+            if (!sourceEnded && running) {
+                val result = fillPacket(slot.buffer, sequence, sampleIndex, outputRate, samplesPerPacket)
+                sampleIndex = result.nextSampleIndex
+                sourceEnded = result.sourceEnded
+                samplesQueued += result.realSamples
+                check(completed.queue(slot.buffer)) { "USB request ${slot.slot} could not be re-queued." }
+                pending++
+                sequence++
             }
 
-            val bytes = packet.array()
-            val crc = CRC32().apply {
-                update(bytes, 4, 12)
-                update(bytes, payloadStart, samplesPerPacket * 2)
-            }.value.toInt()
-            ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).putInt(crcPosition, crc)
-            transferAll(connection, endpoint, bytes)
-            sequence++
+            if (packetsCompleted % 25L == 0L || pending == 0) {
+                val elapsedNanos = (System.nanoTime() - startedNanos).coerceAtLeast(1L)
+                val bytesPerSecond = packetsCompleted * packetBytes.toLong() * 1_000_000_000L / elapsedNanos
+                onEfficiency(
+                    UsbEfficiencySnapshot(
+                        packetsCompleted = packetsCompleted,
+                        samplesQueued = samplesQueued,
+                        queueDepth = pending,
+                        throughputBytesPerSecond = bytesPerSecond,
+                        sequence = sequence,
+                        asynchronous = true
+                    )
+                )
+            }
         }
     }
 
-    private fun transferAll(
-        connection: UsbDeviceConnection,
-        endpoint: UsbEndpoint,
-        bytes: ByteArray
-    ) {
-        var offset = 0
-        val maxChunk = endpoint.maxPacketSize.coerceAtLeast(64) * 8
-        while (offset < bytes.size && running) {
-            val count = minOf(maxChunk, bytes.size - offset)
-            val chunk = bytes.copyOfRange(offset, offset + count)
-            val sent = connection.bulkTransfer(endpoint, chunk, chunk.size, 1_500)
-            if (sent <= 0) error("USB bulk transfer failed at byte $offset.")
-            offset += sent
+    private fun fillPacket(
+        buffer: ByteBuffer,
+        sequence: Int,
+        startSampleIndex: Long,
+        outputRate: Int,
+        samplesPerPacket: Int
+    ): FillResult {
+        buffer.clear()
+        buffer.order(ByteOrder.LITTLE_ENDIAN)
+        buffer.put('L'.code.toByte())
+        buffer.put('P'.code.toByte())
+        buffer.put('P'.code.toByte())
+        buffer.put('1'.code.toByte())
+        buffer.putInt(sequence)
+        buffer.putInt(outputRate)
+        buffer.putShort(samplesPerPacket.toShort())
+        buffer.putShort(0)
+        val crcPosition = buffer.position()
+        buffer.putInt(0)
+        buffer.putInt(0)
+
+        val crc = CRC32()
+        updateCrcIntLe(crc, sequence)
+        updateCrcIntLe(crc, outputRate)
+        updateCrcShortLe(crc, samplesPerPacket)
+        updateCrcShortLe(crc, 0)
+
+        var sampleIndex = startSampleIndex
+        var sourceEnded = false
+        var realSamples = 0
+        repeat(samplesPerPacket) {
+            val seconds = sampleIndex.toDouble() / outputRate.toDouble()
+            val hasSource = program.loop || seconds < program.durationSeconds
+            val pcm = if (hasSource) {
+                realSamples++
+                SignalCore.floatToPcm(SignalCore.sampleAt(program, seconds))
+            } else {
+                sourceEnded = true
+                0
+            }
+            buffer.putShort(pcm)
+            val unsigned = pcm.toInt() and 0xFFFF
+            crc.update(unsigned and 0xFF)
+            crc.update((unsigned ushr 8) and 0xFF)
+            sampleIndex++
         }
+
+        buffer.putInt(crcPosition, crc.value.toInt())
+        buffer.flip()
+        return FillResult(sampleIndex, sourceEnded, realSamples)
+    }
+
+    private fun updateCrcIntLe(crc: CRC32, value: Int) {
+        crc.update(value and 0xFF)
+        crc.update((value ushr 8) and 0xFF)
+        crc.update((value ushr 16) and 0xFF)
+        crc.update((value ushr 24) and 0xFF)
+    }
+
+    private fun updateCrcShortLe(crc: CRC32, value: Int) {
+        crc.update(value and 0xFF)
+        crc.update((value ushr 8) and 0xFF)
     }
 }
