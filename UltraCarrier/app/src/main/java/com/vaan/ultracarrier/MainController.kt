@@ -31,7 +31,7 @@ data class AppUiState(
     val loadedAudio: PcmAudio? = null,
     val hardware: HardwareMode? = null,
     val carrierHz: Float = 18_000f,
-    val depth: Float = 0.75f,
+    val depth: Float = 1f,
     val modulationMode: ModulationMode = ModulationMode.AM,
     val status: String = "Ready",
     val isBusy: Boolean = false,
@@ -75,9 +75,7 @@ class MainController(context: Context) : AutoCloseable {
 
     fun setCarrier(value: Float) {
         val hardware = _uiState.value.hardware ?: return
-        _uiState.value = _uiState.value.copy(
-            carrierHz = value.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
-        )
+        _uiState.value = _uiState.value.copy(carrierHz = value.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz))
     }
 
     fun setDepth(value: Float) {
@@ -90,7 +88,7 @@ class MainController(context: Context) : AutoCloseable {
 
     fun loadFile(uri: Uri) {
         scope.launch {
-            setBusy("Decoding selected audio…")
+            setBusy("Reading and decoding selected audio…")
             try {
                 runCatching {
                     appContext.contentResolver.takePersistableUriPermission(
@@ -100,12 +98,14 @@ class MainController(context: Context) : AutoCloseable {
                 }
                 val audio = withContext(Dispatchers.IO) { decoder.decodeUri(uri) }
                 val name = queryName(uri)
+                _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Loaded $name, ${"%.1f".format(audio.durationSeconds)} seconds"
+                    status = "Loaded $name, ${"%.1f".format(audio.durationSeconds)} seconds. Starting transmission…"
                 )
+                startTransmission(audio)
             } catch (error: Throwable) {
                 fail(error)
             }
@@ -113,21 +113,24 @@ class MainController(context: Context) : AutoCloseable {
     }
 
     fun synthesizeAndTransmit() {
-        val text = _uiState.value.text
+        val text = _uiState.value.text.trim()
         if (text.isBlank()) {
             _uiState.value = _uiState.value.copy(status = "Enter text first.")
             return
         }
         scope.launch {
-            setBusy("Synthesizing speech…")
+            setBusy("Converting your text into speech audio…")
             try {
                 val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
                 val audio = withContext(Dispatchers.IO) { decoder.decodeFile(file) }
                 file.delete()
+                val name = "Speech: ${text.take(36)}"
+                _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
                     loadedAudio = audio,
-                    loadedName = "Synthesized speech",
-                    isBusy = false
+                    loadedName = name,
+                    isBusy = false,
+                    status = "Speech created, ${"%.1f".format(audio.durationSeconds)} seconds. Starting transmission…"
                 )
                 startTransmission(audio)
             } catch (error: Throwable) {
@@ -149,11 +152,7 @@ class MainController(context: Context) : AutoCloseable {
         transmitter.stop()
         transmitJob?.cancel()
         transmitJob = null
-        _uiState.value = _uiState.value.copy(
-            isBusy = false,
-            isTransmitting = false,
-            status = "Transmission stopped"
-        )
+        _uiState.value = _uiState.value.copy(isBusy = false, isTransmitting = false, status = "Transmission stopped")
     }
 
     fun setMediaVolumeMaximum() {
@@ -170,12 +169,15 @@ class MainController(context: Context) : AutoCloseable {
             return
         }
 
-        stopTransmission()
+        transmitter.stop()
+        transmitJob?.cancel()
+        transmitJob = null
+        val sourceName = snapshot.loadedName ?: "selected audio"
         _uiState.value = _uiState.value.copy(
             isBusy = true,
             isTransmitting = true,
             report = null,
-            status = "Opening low-latency AudioTrack…"
+            status = "Encoding $sourceName into the carrier…"
         )
         transmitJob = scope.launch(Dispatchers.IO) {
             try {
@@ -191,7 +193,7 @@ class MainController(context: Context) : AutoCloseable {
                             isBusy = false,
                             isTransmitting = true,
                             report = report,
-                            status = "Transmitting at ${report.actualCarrierHz.roundToInt()} Hz carrier"
+                            status = "Encoding $sourceName at ${report.actualCarrierHz.roundToInt()} Hz"
                         )
                     },
                     onWaveform = { _waveform.value = it }
@@ -199,12 +201,21 @@ class MainController(context: Context) : AutoCloseable {
                 _uiState.value = _uiState.value.copy(
                     isBusy = false,
                     isTransmitting = false,
-                    status = "Transmission complete"
+                    status = "Finished transmitting $sourceName"
                 )
             } catch (error: Throwable) {
                 fail(error)
             }
         }
+    }
+
+    private fun preview(samples: FloatArray, target: Int = 512): FloatArray {
+        if (samples.isEmpty()) return FloatArray(0)
+        if (samples.size <= target) return samples.copyOf()
+        val output = FloatArray(target)
+        val step = samples.size.toDouble() / target
+        for (i in output.indices) output[i] = samples[(i * step).toInt().coerceAtMost(samples.lastIndex)]
+        return output
     }
 
     private fun setBusy(message: String) {
@@ -215,7 +226,7 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = _uiState.value.copy(
             isBusy = false,
             isTransmitting = false,
-            status = error.message ?: error::class.java.simpleName
+            status = "Could not use that source: ${error.message ?: error::class.java.simpleName}"
         )
     }
 
@@ -231,7 +242,7 @@ class MainController(context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        stopTransmission()
+        transmitter.stop()
         hardwareChecker.stop()
         tts.close()
         scope.cancel()
