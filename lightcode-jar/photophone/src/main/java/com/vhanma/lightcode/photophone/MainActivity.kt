@@ -26,6 +26,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -54,9 +55,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var reverseRows: CheckBox
     private lateinit var forceSilent: CheckBox
     private lateinit var proofMode: CheckBox
+    private lateinit var showHud: CheckBox
     private lateinit var startButton: Button
     private lateinit var statusText: TextView
     private lateinit var progressText: TextView
+    private lateinit var telemetryText: TextView
 
     private var selectedUri: Uri? = null
     private var selectedName = ""
@@ -64,16 +67,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var running = false
     private var finishing = false
     private var pendingProgram: OpticalProgram? = null
-
     private var musicView: MusicLightView? = null
     private var usbEngine: UsbBulkPcmEngine? = null
     private var proofRecorder: ProofRecorder? = null
+    private var liveHud: TextView? = null
+    private var lastElapsed = 0.0
+    private var lastScreenStats: EfficiencySnapshot? = null
+    private var lastUsbStats: UsbEfficiencySnapshot? = null
 
     private lateinit var tts: TextToSpeech
     private var ttsReady = false
     private var pendingTtsId: String? = null
     private var pendingTtsFile: File? = null
-
     private val audioManager by lazy { getSystemService(AudioManager::class.java) }
 
     private val usbPermissionReceiver = object : BroadcastReceiver() {
@@ -81,12 +86,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (intent?.action != ACTION_USB_PERMISSION) return
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
             val program = pendingProgram
-            if (granted && program != null) {
-                status("USB permission granted. Starting volume-independent light PCM…")
-                beginOutput(program)
-            } else {
-                fail("USB permission was not granted.")
-            }
+            if (granted && program != null) beginOutput(program)
+            else fail("USB permission was not granted.")
         }
     }
 
@@ -104,24 +105,22 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         if (ttsReady) {
             tts.language = Locale.US
             tts.setSpeechRate(0.94f)
-            tts.setPitch(1.0f)
+            tts.setPitch(1f)
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
-
                 override fun onError(utteranceId: String?) {
                     if (utteranceId == pendingTtsId) runOnUiThread { fail("Silent text synthesis failed.") }
                 }
-
                 override fun onDone(utteranceId: String?) {
                     if (utteranceId != pendingTtsId) return
                     val file = pendingTtsFile ?: return
-                    thread(name = "PhotophoneTtsDecode") {
+                    thread(name = "EfficiencyTtsDecode") {
                         runCatching {
                             AudioDecoder.decode(this@MainActivity, Uri.fromFile(file), "Typed speech")
                         }.onSuccess { decoded ->
                             runOnUiThread { prepareDecodedProgram(decoded) }
                         }.onFailure { error ->
-                            runOnUiThread { fail("Synthesized speech decode failed: ${error.message}") }
+                            runOnUiThread { fail("Speech decode failed: ${error.message}") }
                         }
                     }
                 }
@@ -129,9 +128,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         runOnUiThread {
             statusText.text = if (ttsReady) {
-                "Ready. Songs and words are decoded internally; the phone speaker is not used."
+                "Efficiency edition ready. Every stage remains visible."
             } else {
-                "TTS unavailable. Song-file, tone and sweep modes remain ready."
+                "TTS unavailable. Song, tone and sweep modes remain ready."
             }
         }
     }
@@ -144,29 +143,22 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         scroll.addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        root.addView(label("LIGHTCODE PHOTOPHONE", 29f, Color.WHITE, true))
+        root.addView(label("PHOTOPHONE EFFICIENCY LAB", 28f, Color.WHITE, true))
         root.addView(label(
-            "Literal music carried by changing light. The selected song waveform becomes the brightness waveform; the black jar is the intended acoustic source.",
+            "Literal PCM-to-light with compact memory, hardware raster rendering, asynchronous USB packets and visible bit-by-bit telemetry.",
             14f,
             0xFFBDBDBD.toInt()
         ))
-        root.addView(spacer(12))
 
         root.addView(section("SOURCE"))
-        sourceSpinner = spinner(listOf(
-            "Song or audio file",
-            "Typed words as literal speech-light",
-            "Calibration tone",
-            "Jar sweep"
-        ))
+        sourceSpinner = spinner(listOf("Song or audio file", "Typed speech-light", "Calibration tone", "Jar sweep"))
         root.addView(sourceSpinner)
 
         textInput = EditText(this).apply {
-            setText("The song is traveling through light, and the jar is speaking.")
-            minLines = 4
+            setText("Every sample becomes light, and every stage stays visible.")
+            minLines = 3
             gravity = Gravity.TOP
             setTextColor(Color.WHITE)
-            setHintTextColor(0xFF777777.toInt())
             setBackgroundColor(0xFF151515.toInt())
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
@@ -182,37 +174,27 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         toneSeek = SeekBar(this).apply {
             max = 4_480
             progress = 420
-            setOnSeekBarChangeListener(simpleSeek { value ->
-                toneLabel.text = "Tone frequency: ${value + 20} Hz"
-            })
+            setOnSeekBarChangeListener(simpleSeek { toneLabel.text = "Tone frequency: ${it + 20} Hz" })
         }
         root.addView(toneSeek)
 
-        root.addView(section("MUSIC PROCESSING"))
-        processingSpinner = spinner(listOf(
-            "Direct PCM",
-            "Clarity optical EQ",
-            "Compressed optical PCM"
-        ))
+        root.addView(section("PCM PROCESSING"))
+        processingSpinner = spinner(listOf("Direct PCM", "Clarity optical EQ", "Compressed optical PCM"))
         root.addView(processingSpinner)
 
-        root.addView(section("LIGHT OUTPUT"))
+        root.addView(section("OUTPUT ENGINE"))
         outputSpinner = spinner(listOf(
-            "Scanline PCM screen",
+            "Hardware scanline PCM",
             "Whole-screen low-band fallback",
-            "USB bulk LED controller 48 kHz"
+            "Asynchronous USB LED controller 48 kHz"
         ))
         root.addView(outputSpinner)
 
-        root.addView(section("SCREEN COLOR"))
+        root.addView(section("SCREEN PARAMETERS"))
         colorSpinner = spinner(listOf("White", "Red", "Green", "Blue", "Amber", "Cyan", "Magenta"))
         root.addView(colorSpinner)
-
-        root.addView(section("BEAM GEOMETRY"))
         geometrySpinner = spinner(listOf("Full aperture", "Hollow beam", "Central shaft", "Twin beam"))
         root.addView(geometrySpinner)
-
-        root.addView(section("SCANLINE DENSITY"))
         rowsSpinner = spinner(listOf("Automatic", "192 rows", "256 rows", "384 rows", "512 rows", "640 rows", "768 rows"))
         root.addView(rowsSpinner)
 
@@ -221,72 +203,47 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         gainSeek = SeekBar(this).apply {
             max = 175
             progress = 95
-            setOnSeekBarChangeListener(simpleSeek { value ->
-                gainLabel.text = "Optical modulation gain: ${value + 5}%"
-            })
+            setOnSeekBarChangeListener(simpleSeek { gainLabel.text = "Optical modulation gain: ${it + 5}%" })
         }
         root.addView(gainSeek)
 
-        reverseRows = CheckBox(this).apply {
-            text = "Reverse scanline direction"
-            setTextColor(Color.WHITE)
-        }
+        reverseRows = check("Reverse scanline direction", false)
+        forceSilent = check("Force Android media volume to zero", true)
+        proofMode = check("Proof Mode: record jar and save WAV", false)
+        showHud = check("Show live bit-by-bit HUD over the light", true)
         root.addView(reverseRows)
-
-        forceSilent = CheckBox(this).apply {
-            text = "Force Android media volume to zero before transmission"
-            setTextColor(Color.WHITE)
-            isChecked = true
-        }
         root.addView(forceSilent)
-
-        proofMode = CheckBox(this).apply {
-            text = "Proof Mode: record the jar and save a WAV"
-            setTextColor(Color.WHITE)
-            isChecked = false
-        }
         root.addView(proofMode)
+        root.addView(showHud)
 
-        startButton = actionButton("START LITERAL MUSIC-LIGHT") {
+        startButton = actionButton("START EFFICIENT MUSIC-LIGHT") {
             if (busy || running) stopAll("Stopped by user.") else prepareSource()
-        }.apply { setBackgroundColor(0xFF00838F.toInt()) }
+        }.apply { setBackgroundColor(0xFF00695C.toInt()) }
         root.addView(startButton)
 
-        root.addView(actionButton("PHOTOPHONE HARDWARE REPORT") {
+        root.addView(actionButton("FULL BREAKDOWN REPORT") {
             AlertDialog.Builder(this)
-                .setTitle("Photophone hardware report")
+                .setTitle("Photophone breakdown")
                 .setMessage(hardwareReport())
                 .setPositiveButton("CLOSE", null)
                 .show()
         })
 
         progressText = label("No transmission running.", 13f, 0xFFFFCC80.toInt())
-        root.addView(progressText)
+        telemetryText = label("No PCM loaded.", 12f, 0xFF9FA8DA.toInt())
         statusText = label("Initializing…", 13f, 0xFF80CBC4.toInt())
+        root.addView(progressText)
+        root.addView(telemetryText)
         root.addView(statusText)
 
-        root.addView(spacer(8))
-        root.addView(label(
-            "Screen mode is a device-dependent experiment that exploits row scanout. USB bulk mode is the volume-independent full-rate route and requires the matching LED-controller firmware included in the repository.",
-            12f,
-            0xFF8E8E8E.toInt()
-        ))
-
-        sourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                updateSourceControls(position)
-            }
-        }
-        outputSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val screenVisible = position != 2
-                colorSpinner.isEnabled = screenVisible
-                geometrySpinner.isEnabled = screenVisible
-                rowsSpinner.isEnabled = position == 0
-                reverseRows.isEnabled = position == 0
-            }
+        sourceSpinner.onItemSelectedListener = selectionListener { updateSourceControls(it) }
+        outputSpinner.onItemSelectedListener = selectionListener { position ->
+            val screen = position != 2
+            colorSpinner.isEnabled = screen
+            geometrySpinner.isEnabled = screen
+            rowsSpinner.isEnabled = position == 0
+            reverseRows.isEnabled = position == 0
+            showHud.isEnabled = screen
         }
         updateSourceControls(0)
         return scroll
@@ -298,7 +255,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         textInput.visibility = if (position == 1) View.VISIBLE else View.GONE
         toneLabel.visibility = if (position == 2) View.VISIBLE else View.GONE
         toneSeek.visibility = toneLabel.visibility
-        processingSpinner.isEnabled = position == 0 || position == 1
+        processingSpinner.isEnabled = position <= 1
     }
 
     private fun chooseFile() {
@@ -310,25 +267,21 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         startActivityForResult(intent, REQUEST_AUDIO_FILE)
     }
 
-    @Deprecated("Retained for broad Android compatibility.")
+    @Deprecated("Retained for broad Android compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != REQUEST_AUDIO_FILE || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         selectedUri = uri
         selectedName = displayName(uri)
-        runCatching {
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        fileLabel.text = "Loaded song: $selectedName"
+        runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        fileLabel.text = "Loaded: $selectedName"
     }
 
     private fun prepareSource() {
-        if (busy || running) return
         busy = true
         startButton.text = "STOP"
-        status("Preparing literal PCM-to-light transmission…")
-
+        status("Decoding each sample into compact 16-bit mono PCM…")
         when (sourceSpinner.selectedItemPosition) {
             0 -> decodeSong()
             1 -> synthesizeWords()
@@ -338,15 +291,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun decodeSong() {
-        val uri = selectedUri ?: return fail("Choose a song or audio file first.")
-        thread(name = "PhotophoneSongDecode") {
-            runCatching {
-                AudioDecoder.decode(this, uri, selectedName.ifBlank { "Song" })
-            }.onSuccess { decoded ->
-                runOnUiThread { prepareDecodedProgram(decoded) }
-            }.onFailure { error ->
-                runOnUiThread { fail("Song decode failed: ${error.message}") }
-            }
+        val uri = selectedUri ?: return fail("Choose a song first.")
+        thread(name = "EfficiencySongDecode") {
+            runCatching { AudioDecoder.decode(this, uri, selectedName.ifBlank { "Song" }) }
+                .onSuccess { runOnUiThread { prepareDecodedProgram(it) } }
+                .onFailure { runOnUiThread { fail("Song decode failed: ${it.message}") } }
         }
     }
 
@@ -354,42 +303,34 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val text = textInput.text.toString().trim()
         if (text.isEmpty()) return fail("Enter words first.")
         if (!ttsReady) return fail("Android text-to-speech is not ready.")
-
-        val file = File(cacheDir, "photophone_tts_${System.currentTimeMillis()}.wav")
-        val utteranceId = UUID.randomUUID().toString()
+        val file = File(cacheDir, "efficiency_tts_${System.currentTimeMillis()}.wav")
+        val id = UUID.randomUUID().toString()
         pendingTtsFile = file
-        pendingTtsId = utteranceId
-        val result = tts.synthesizeToFile(text, Bundle(), file, utteranceId)
-        if (result != TextToSpeech.SUCCESS) fail("Android refused silent text synthesis.")
-        else status("Building speech PCM internally without playing it…")
+        pendingTtsId = id
+        if (tts.synthesizeToFile(text, Bundle(), file, id) != TextToSpeech.SUCCESS) {
+            fail("Android refused silent text synthesis.")
+        }
     }
 
     private fun prepareDecodedProgram(decoded: OpticalProgram) {
-        val processing = when (processingSpinner.selectedItemPosition) {
+        val mode = when (processingSpinner.selectedItemPosition) {
             1 -> MusicProcessing.CLARITY
             2 -> MusicProcessing.COMPRESSED
             else -> MusicProcessing.DIRECT
         }
-        val processed = if (sourceSpinner.selectedItemPosition <= 1) {
-            SignalCore.process(decoded, processing)
-        } else {
-            decoded
-        }
-        pendingProgram = processed
+        val program = if (sourceSpinner.selectedItemPosition <= 1) SignalCore.process(decoded, mode) else decoded
+        pendingProgram = program
+        telemetryText.text = programBreakdown(program)
         if (proofMode.isChecked && !hasMicrophonePermission()) {
-            status("Proof Mode needs microphone permission to record the jar.")
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MIC_PERMISSION)
-            return
+        } else {
+            beginOutput(program)
         }
-        beginOutput(processed)
     }
 
     private fun beginOutput(program: OpticalProgram) {
         pendingProgram = program
-        if (forceSilent.isChecked) {
-            runCatching { audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0) }
-        }
-
+        if (forceSilent.isChecked) runCatching { audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0) }
         when (outputSpinner.selectedItemPosition) {
             0 -> {
                 startProofIfRequested(program)
@@ -417,72 +358,117 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             requestedRows = selectedRows(),
             geometry = selectedGeometry(),
             onProgress = { elapsed ->
-                runOnUiThread {
-                    progressText.text = "${formatTime(elapsed)} / ${formatTime(program.durationSeconds)} · light only"
-                }
+                lastElapsed = elapsed
+                runOnUiThread { updateLiveHud(program) }
+            },
+            onEfficiency = { stats ->
+                lastScreenStats = stats
+                runOnUiThread { updateLiveHud(program) }
             },
             onFinished = { runOnUiThread { finishOutput("Transmission completed.") } }
         )
         musicView = view
-        setContentView(view)
-        status(
-            if (mode == ScreenPhotophoneMode.SCANLINE_PCM) {
-                "Song PCM is controlling scanline light. Double-tap the light to stop."
-            } else {
-                "Whole-screen fallback active. This preserves only low-frequency envelope detail."
+
+        val frame = FrameLayout(this)
+        frame.addView(view, FrameLayout.LayoutParams(-1, -1))
+        if (showHud.isChecked) {
+            val hud = TextView(this).apply {
+                setTextColor(Color.WHITE)
+                textSize = 11f
+                setBackgroundColor(0xB0000000.toInt())
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                typeface = android.graphics.Typeface.MONOSPACE
             }
-        )
+            liveHud = hud
+            frame.addView(hud, FrameLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+            updateLiveHud(program)
+        }
+        setContentView(frame)
+        status("Hardware raster active. Double-tap the light to stop.")
     }
 
     private fun startUsb(program: OpticalProgram) {
         val engine = UsbBulkPcmEngine(
             this,
             program,
-            onStatus = { message -> runOnUiThread { status(message) } },
-            onFinished = { runOnUiThread { finishOutput("USB photophone transmission completed.") } }
+            onStatus = { runOnUiThread { message -> status(message) } },
+            onFinished = { runOnUiThread { finishOutput("USB transmission completed.") } },
+            onEfficiency = { stats ->
+                lastUsbStats = stats
+                runOnUiThread { telemetryText.text = usbBreakdown(program, stats) }
+            }
         )
-        val target = engine.findTarget()
-            ?: return fail("No USB device with a bulk OUT endpoint was detected.")
-
+        val target = engine.findTarget() ?: return fail("No USB bulk OUT device detected.")
         if (!engine.hasPermission(target)) {
             usbEngine = engine
-            status("Requesting permission for ${target.description}…")
+            status("Requesting USB permission for ${target.description}…")
             engine.requestPermission(target, usbPermissionIntent())
             return
         }
-
         startProofIfRequested(program)
         usbEngine = engine
         busy = false
         running = true
-        progressText.text = "USB bulk PCM at 48,000 samples/s"
+        progressText.text = "Asynchronous USB PCM: 48,000 samples/s"
         runCatching { engine.start(target) }
-            .onFailure { error -> fail("USB light controller failed: ${error.message}") }
+            .onFailure { fail("USB light controller failed: ${it.message}") }
     }
 
     private fun startProofIfRequested(program: OpticalProgram) {
         if (!proofMode.isChecked) return
-        val recorder = ProofRecorder(
-            context = this,
-            sourceProgram = program,
-            onStatus = { message -> runOnUiThread { status(message) } },
-            onComplete = { result ->
-                runOnUiThread {
-                    proofRecorder = null
-                    AlertDialog.Builder(this)
-                        .setTitle("Photophone Proof")
-                        .setMessage(result.report)
-                        .setPositiveButton("CLOSE", null)
-                        .show()
-                }
-            },
-            onError = { message -> runOnUiThread {
+        proofRecorder = ProofRecorder(
+            this,
+            program,
+            onStatus = { runOnUiThread { message -> status(message) } },
+            onComplete = { result -> runOnUiThread {
                 proofRecorder = null
-                status("Proof Mode: $message")
-            } }
-        )
-        proofRecorder = recorder
-        recorder.start()
+                AlertDialog.Builder(this)
+                    .setTitle("Photophone Proof")
+                    .setMessage(result.report)
+                    .setPositiveButton("CLOSE", null)
+                    .show()
+            } },
+            onError = { message -> runOnUiThread { status("Proof Mode: $message") } }
+        ).also { it.start() }
+    }
+
+    private fun updateLiveHud(program: OpticalProgram) {
+        val stats = lastScreenStats
+        val thermal = stats?.thermalHeadroom?.let { if (it.isNaN()) "warming" else "%.2f".format(it) } ?: "warming"
+        val text = buildString {
+            append("PCM ").append(program.sampleRate).append(" Hz · 16-bit mono · ")
+            append(program.samples.size).append(" samples · ")
+            append(formatBytes(program.memoryBytes)).append('\n')
+            append("TIME ").append(formatTime(lastElapsed)).append(" / ").append(formatTime(program.durationSeconds)).append('\n')
+            if (stats != null) {
+                append("RASTER ").append(stats.activeRows).append('/').append(stats.configuredRows)
+                append(" rows · ").append(stats.effectiveRowRateHz.toLong()).append(" row-updates/s\n")
+                append("DISPLAY ").append("%.2f".format(stats.refreshRateHz)).append(" Hz · render ")
+                append(stats.renderMicros).append(" µs · dropped ").append(stats.droppedFrames).append('\n')
+                append("THERMAL headroom-use ").append(thermal).append(" · frame ").append(stats.frameNumber)
+            }
+        }
+        liveHud?.text = text
+        telemetryText.text = text
+    }
+
+    private fun usbBreakdown(program: OpticalProgram, stats: UsbEfficiencySnapshot): String = buildString {
+        append(programBreakdown(program)).append('\n')
+        append("USB ASYNC: ").append(stats.asynchronous).append('\n')
+        append("PACKETS COMPLETE: ").append(stats.packetsCompleted).append('\n')
+        append("SEQUENCE: ").append(stats.sequence).append(" · QUEUE DEPTH: ").append(stats.queueDepth).append('\n')
+        append("SAMPLES QUEUED: ").append(stats.samplesQueued).append('\n')
+        append("THROUGHPUT: ").append(stats.throughputBytesPerSecond).append(" bytes/s")
+    }
+
+    private fun programBreakdown(program: OpticalProgram): String = buildString {
+        append("SOURCE: ").append(program.label).append('\n')
+        append("FORMAT: 16-bit signed mono PCM\n")
+        append("SAMPLE RATE: ").append(program.sampleRate).append(" Hz\n")
+        append("SAMPLE COUNT: ").append(program.samples.size).append('\n')
+        append("DURATION: ").append(formatTime(program.durationSeconds)).append('\n')
+        append("PCM MEMORY: ").append(formatBytes(program.memoryBytes)).append("\n")
+        append("PHONE SPEAKER OBJECT: none")
     }
 
     private fun finishOutput(message: String) {
@@ -493,41 +479,35 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         usbEngine?.stop()
         usbEngine = null
         proofRecorder?.stop()
+        proofRecorder = null
+        liveHud = null
         running = false
         busy = false
         pendingProgram = null
         exitOpticalFullscreen()
         setContentView(controlView)
-        startButton.text = "START LITERAL MUSIC-LIGHT"
+        startButton.text = "START EFFICIENT MUSIC-LIGHT"
         progressText.text = "No transmission running."
         status(message)
         finishing = false
     }
 
-    private fun stopAll(message: String) {
-        pendingProgram = null
-        finishOutput(message)
-    }
+    private fun stopAll(message: String) = finishOutput(message)
 
     private fun fail(message: String) {
         busy = false
         running = false
         pendingProgram = null
-        startButton.text = "START LITERAL MUSIC-LIGHT"
+        startButton.text = "START EFFICIENT MUSIC-LIGHT"
         status(message)
     }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_MIC_PERMISSION) {
-            val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
             val program = pendingProgram
-            if (granted && program != null) beginOutput(program)
-            else fail("Microphone permission was denied, so Proof Mode could not start.")
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && program != null) beginOutput(program)
+            else fail("Microphone permission was denied.")
         }
     }
 
@@ -535,48 +515,50 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         Build.VERSION.SDK_INT < 23 || checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun usbPermissionIntent(): PendingIntent {
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-            if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
-        val intent = Intent(ACTION_USB_PERMISSION).setPackage(packageName)
-        return PendingIntent.getBroadcast(this, 0, intent, flags)
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+        return PendingIntent.getBroadcast(
+            this,
+            0,
+            Intent(ACTION_USB_PERMISSION).setPackage(packageName),
+            flags
+        )
     }
 
     private fun registerUsbReceiver() {
         val filter = IntentFilter(ACTION_USB_PERMISSION)
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(usbPermissionReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbPermissionReceiver, filter, RECEIVER_NOT_EXPORTED)
+        else {
             @Suppress("DEPRECATION")
             registerReceiver(usbPermissionReceiver, filter)
         }
     }
 
     private fun hardwareReport(): String {
-        val modes = display?.supportedModes
-            ?.sortedByDescending { it.refreshRate }
-            ?.joinToString("\n") {
-                "${it.physicalWidth}×${it.physicalHeight} @ ${"%.2f".format(it.refreshRate)} Hz"
-            }
-            ?: "Unknown"
-        val target = UsbBulkPcmEngine(
-            this,
-            SignalCore.tone(440.0, seconds = 1.0),
-            {},
-            {}
-        ).findTarget()
-        val mediaVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val program = pendingProgram
+        val modes = display?.supportedModes?.sortedByDescending { it.refreshRate }?.joinToString("\n") {
+            "${it.physicalWidth}×${it.physicalHeight} @ ${"%.2f".format(it.refreshRate)} Hz"
+        } ?: "Unknown"
         return buildString {
             append("DEVICE: ${Build.MANUFACTURER} ${Build.MODEL}\n")
             append("ANDROID: ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}\n")
+            append("PACKAGE: $packageName\n")
             append("CURRENT REFRESH: ${display?.refreshRate ?: 0f} Hz\n\n")
             append("DISPLAY MODES:\n$modes\n\n")
-            append("MEDIA VOLUME: $mediaVolume\n")
-            append("PHONE AUDIO PLAYBACK OBJECTS: none created by Photophone\n\n")
-            append("USB BULK TARGET: ${target?.description ?: "none connected"}\n")
-            append("USB PCM RATE: 48,000 mono samples/s\n")
-            append("SCREEN METHOD: differential row luminance synchronized to native frames")
+            append("AUDIO STORAGE: 16-bit ShortArray, 2 bytes/sample\n")
+            append("RASTER DRAW: one 1-pixel-wide hardware bitmap per frame\n")
+            append("USB: two asynchronous UsbRequest buffers\n")
+            append("THERMAL: adaptive row reduction near severe throttling\n")
+            append("MEDIA VOLUME: ${audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)}\n")
+            append("ANDROID SONG PLAYBACK OBJECT: none\n")
+            if (program != null) append("\n").append(programBreakdown(program))
+            lastScreenStats?.let { append("\n\nSCREEN LAST:\n").append(screenStatsText(it)) }
+            lastUsbStats?.let { append("\n\nUSB LAST:\n").append(usbBreakdown(program ?: SignalCore.tone(440.0, 1.0), it)) }
         }
     }
+
+    private fun screenStatsText(stats: EfficiencySnapshot): String =
+        "${stats.activeRows}/${stats.configuredRows} rows, ${stats.effectiveRowRateHz.toLong()} row-updates/s, " +
+            "${stats.renderMicros} µs render, ${stats.droppedFrames} dropped, thermal ${stats.thermalHeadroom}"
 
     private fun selectedColor(): LightColorMode = when (colorSpinner.selectedItemPosition) {
         1 -> LightColorMode.RED
@@ -614,14 +596,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         if (Build.VERSION.SDK_INT >= 24) runCatching { window.setSustainedPerformanceMode(true) }
         @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private fun exitOpticalFullscreen() {
@@ -636,8 +614,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun displayName(uri: Uri): String {
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getString(0)
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) return it.getString(0)
         }
         return uri.lastPathSegment ?: "selected-song"
     }
@@ -647,13 +625,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         return "%d:%02d".format(total / 60, total % 60)
     }
 
+    private fun formatBytes(bytes: Long): String = when {
+        bytes >= 1_048_576L -> "%.2f MiB".format(bytes / 1_048_576.0)
+        bytes >= 1_024L -> "%.1f KiB".format(bytes / 1_024.0)
+        else -> "$bytes B"
+    }
+
     private fun status(message: String) {
         if (::statusText.isInitialized) statusText.text = message
     }
 
-    private fun section(text: String): TextView = label(text, 13f, 0xFF00E5FF.toInt(), true)
+    private fun section(text: String) = label(text, 13f, 0xFF00E5FF.toInt(), true)
 
-    private fun label(text: String, size: Float, color: Int, bold: Boolean = false): TextView = TextView(this).apply {
+    private fun label(text: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         this.text = text
         textSize = size
         setTextColor(color)
@@ -661,19 +645,28 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         setPadding(0, dp(5), 0, dp(7))
     }
 
-    private fun actionButton(text: String, action: () -> Unit): Button = Button(this).apply {
+    private fun check(text: String, checked: Boolean) = CheckBox(this).apply {
+        this.text = text
+        setTextColor(Color.WHITE)
+        isChecked = checked
+    }
+
+    private fun actionButton(text: String, action: () -> Unit) = Button(this).apply {
         this.text = text
         setTextColor(Color.WHITE)
         setBackgroundColor(0xFF333333.toInt())
         setOnClickListener { action() }
-        val parameters = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54))
-        parameters.setMargins(0, dp(8), 0, dp(4))
-        layoutParams = parameters
+        layoutParams = LinearLayout.LayoutParams(-1, dp(54)).apply { setMargins(0, dp(8), 0, dp(4)) }
     }
 
-    private fun spinner(items: List<String>): Spinner = Spinner(this).apply {
+    private fun spinner(items: List<String>) = Spinner(this).apply {
         adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, items)
         setBackgroundColor(0xFF202020.toInt())
+    }
+
+    private fun selectionListener(action: (Int) -> Unit) = object : android.widget.AdapterView.OnItemSelectedListener {
+        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) = action(position)
     }
 
     private fun simpleSeek(action: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
@@ -682,12 +675,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
     }
 
-    private fun spacer(height: Int) = View(this).apply {
-        layoutParams = LinearLayout.LayoutParams(1, dp(height))
-    }
-
-    private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun matchWrap() = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT)
+    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     @Deprecated("Android framework back callback")
     override fun onBackPressed() {
@@ -707,8 +696,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     companion object {
-        private const val REQUEST_AUDIO_FILE = 3001
-        private const val REQUEST_MIC_PERMISSION = 3002
-        private const val ACTION_USB_PERMISSION = "com.vhanma.lightcode.photophone.USB_PERMISSION"
+        private const val REQUEST_AUDIO_FILE = 4001
+        private const val REQUEST_MIC_PERMISSION = 4002
+        private const val ACTION_USB_PERMISSION = "com.vhanma.lightcode.photophone.efficient.USB_PERMISSION"
     }
 }
