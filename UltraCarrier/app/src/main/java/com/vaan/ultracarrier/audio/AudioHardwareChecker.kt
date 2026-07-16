@@ -35,9 +35,7 @@ class AudioHardwareChecker(context: Context) {
 
     fun detect(): HardwareMode {
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
-        val external = outputs
-            .filter { it.type in EXTERNAL_TYPES }
-            .maxByOrNull(::priority)
+        val external = outputs.filter { it.type in EXTERNAL_TYPES }.maxByOrNull(::priority)
 
         val nativeRate = audioManager
             .getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
@@ -53,7 +51,7 @@ class AudioHardwareChecker(context: Context) {
                 label = "Internal speaker mode",
                 outputDevice = builtIn,
                 requestedSampleRate = rate,
-                carrierMinHz = 15_000f,
+                carrierMinHz = 13_500f,
                 carrierMaxHz = min(22_000f, rate * 0.458f),
                 external = false,
                 detail = "Primary output reports ${rate / 1000.0} kHz. Carrier ceiling is 22 kHz."
@@ -67,18 +65,17 @@ class AudioHardwareChecker(context: Context) {
             96_000 in reported -> 96_000
             88_200 in reported -> 88_200
             reported.any { it > 48_000 } -> reported.first { it > 48_000 }
-            external.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                external.type == AudioDeviceInfo.TYPE_USB_HEADSET -> 96_000
+            external.type == AudioDeviceInfo.TYPE_USB_DEVICE || external.type == AudioDeviceInfo.TYPE_USB_HEADSET -> 96_000
             else -> nativeRate
         }
 
         val name = external.productName?.toString().orEmpty().ifBlank { typeName(external.type) }
         val report = if (reported.isEmpty()) "sample rates not reported" else "reports ${reported.joinToString()} Hz"
         return HardwareMode(
-            label = if (rate > 48_000) "External high-resolution mode" else "External output mode",
+            label = if (rate > 48_000) "External high-resolution mode" else "External listening mode",
             outputDevice = external,
             requestedSampleRate = rate,
-            carrierMinHz = 15_000f,
+            carrierMinHz = 13_500f,
             carrierMaxHz = min(40_000f, rate * 0.45f),
             external = true,
             detail = "$name, $report. Requesting ${rate / 1000.0} kHz."
@@ -86,26 +83,32 @@ class AudioHardwareChecker(context: Context) {
     }
 
     private fun priority(device: AudioDeviceInfo): Int = when (device.type) {
-        AudioDeviceInfo.TYPE_USB_DEVICE -> 100
-        AudioDeviceInfo.TYPE_USB_HEADSET -> 95
-        AudioDeviceInfo.TYPE_LINE_DIGITAL -> 90
-        AudioDeviceInfo.TYPE_LINE_ANALOG -> 85
-        AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC, AudioDeviceInfo.TYPE_HDMI_EARC -> 80
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 70
-        AudioDeviceInfo.TYPE_WIRED_HEADSET -> 65
+        AudioDeviceInfo.TYPE_USB_DEVICE -> 110
+        AudioDeviceInfo.TYPE_USB_HEADSET -> 105
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> 100
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> 95
+        AudioDeviceInfo.TYPE_BLE_HEADSET -> 90
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> 85
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> 80
+        AudioDeviceInfo.TYPE_LINE_DIGITAL -> 75
+        AudioDeviceInfo.TYPE_LINE_ANALOG -> 70
+        AudioDeviceInfo.TYPE_HDMI, AudioDeviceInfo.TYPE_HDMI_ARC, AudioDeviceInfo.TYPE_HDMI_EARC -> 65
         else -> 0
     }
 
     private fun typeName(type: Int): String = when (type) {
         AudioDeviceInfo.TYPE_USB_DEVICE -> "USB audio device"
         AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headset"
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "wired headphones"
+        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "wired headset"
+        AudioDeviceInfo.TYPE_BLE_HEADSET -> "Bluetooth LE headset"
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth audio"
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth headset"
         AudioDeviceInfo.TYPE_LINE_DIGITAL -> "digital line output"
         AudioDeviceInfo.TYPE_LINE_ANALOG -> "analog line output"
         AudioDeviceInfo.TYPE_HDMI -> "HDMI output"
         AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI ARC output"
         AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC output"
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "wired headphones"
-        AudioDeviceInfo.TYPE_WIRED_HEADSET -> "wired headset"
         else -> "external audio device"
     }
 
@@ -113,13 +116,16 @@ class AudioHardwareChecker(context: Context) {
         private val EXTERNAL_TYPES = setOf(
             AudioDeviceInfo.TYPE_USB_DEVICE,
             AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
             AudioDeviceInfo.TYPE_LINE_DIGITAL,
             AudioDeviceInfo.TYPE_LINE_ANALOG,
             AudioDeviceInfo.TYPE_HDMI,
             AudioDeviceInfo.TYPE_HDMI_ARC,
-            AudioDeviceInfo.TYPE_HDMI_EARC,
-            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-            AudioDeviceInfo.TYPE_WIRED_HEADSET
+            AudioDeviceInfo.TYPE_HDMI_EARC
         )
     }
 }
