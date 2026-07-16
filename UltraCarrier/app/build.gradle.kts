@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.acousticarray"
+        applicationId = "com.vaan.ultracarrier.thoughtbeam"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "7.0.0-acoustic-array"
+        versionCode = 8
+        versionName = "8.0.0-thoughtbeam"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
