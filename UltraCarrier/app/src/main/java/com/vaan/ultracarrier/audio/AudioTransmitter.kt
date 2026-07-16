@@ -138,20 +138,20 @@ class AudioTransmitter {
 
     private fun outputGain(mode: ThoughtMode, path: ListeningPath, depth: Float): Float = when (path) {
         ListeningPath.HEADPHONES -> when (mode) {
-            ThoughtMode.INNER_VOICE -> 0.035f + 0.18f * depth
-            ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.05f + 0.22f * depth
-            ThoughtMode.BEAM_WHISPER -> 0.07f + 0.24f * depth
+            ThoughtMode.INNER_VOICE -> 0.05f + 0.22f * depth
+            ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.06f + 0.25f * depth
+            ThoughtMode.BEAM_WHISPER -> 0.08f + 0.27f * depth
         }
 
         ListeningPath.BONE_CONDUCTION -> when (mode) {
-            ThoughtMode.INNER_VOICE -> 0.06f + 0.27f * depth
-            else -> 0.08f + 0.28f * depth
+            ThoughtMode.INNER_VOICE -> 0.07f + 0.30f * depth
+            else -> 0.09f + 0.31f * depth
         }
 
         ListeningPath.PHONE_SPEAKER -> when (mode) {
-            ThoughtMode.INNER_VOICE -> 0.10f + 0.26f * depth
-            ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.12f + 0.30f * depth
-            ThoughtMode.BEAM_WHISPER -> 0.15f + 0.34f * depth
+            ThoughtMode.INNER_VOICE -> 0.20f + 0.48f * depth
+            ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.18f + 0.42f * depth
+            ThoughtMode.BEAM_WHISPER -> 0.20f + 0.44f * depth
         }
     }
 
@@ -191,7 +191,7 @@ class AudioTransmitter {
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                     .setFlags(AudioAttributes.FLAG_LOW_LATENCY)
                     .build()
             )
@@ -228,10 +228,10 @@ class AudioTransmitter {
             when (listeningPath) {
                 ListeningPath.BONE_CONDUCTION -> 350f
                 ListeningPath.HEADPHONES -> 220f
-                ListeningPath.PHONE_SPEAKER -> 260f
+                ListeningPath.PHONE_SPEAKER -> 220f
             }
         )
-        private val fadeFrames = max(1, (sampleRate * if (thoughtMode == ThoughtMode.INNER_VOICE) 0.12 else 0.08).toInt())
+        private val fadeFrames = max(1, (sampleRate * if (thoughtMode == ThoughtMode.INNER_VOICE) 0.08 else 0.06).toInt())
         private val constantPhaseStep = if (carrier > 0f) 2.0 * PI * carrier / sampleRate else 0.0
         private val fmDeviation = 350f + 1_650f * depth
         private val hilbert = HilbertTransformer()
@@ -250,10 +250,10 @@ class AudioTransmitter {
                 for (i in 0 until frames) {
                     val raw = samples[offset + i]
                     val bandLimited = highPass.process(lowPass.process(raw))
-                    val drive = if (thoughtMode == ThoughtMode.INNER_VOICE) 2.2f else 3.1f
+                    val drive = if (thoughtMode == ThoughtMode.INNER_VOICE) 2.5f else 3.1f
                     val message = tanh((bandLimited * drive).toDouble()).toFloat().coerceIn(-1f, 1f)
-                    val gateTarget = if (abs(message) > 0.006f) 1f else 0f
-                    val gateSpeed = if (gateTarget > gateEnvelope) 0.035f else 0.004f
+                    val gateTarget = if (abs(message) > 0.004f) 1f else 0f
+                    val gateSpeed = if (gateTarget > gateEnvelope) 0.045f else 0.004f
                     gateEnvelope += (gateTarget - gateEnvelope) * gateSpeed
 
                     val absoluteFrame = outputFrame + i
@@ -282,8 +282,8 @@ class AudioTransmitter {
                         ThoughtMode.BEAM_WHISPER -> {
                             val carrierSample = cos(phase).toFloat()
                             phase += constantPhaseStep
-                            val pilot = 0.055f
-                            val sideband = message * (0.18f + 0.42f * depth)
+                            val pilot = 0.075f
+                            val sideband = message * (0.22f + 0.46f * depth)
                             carrierSample * (pilot + sideband) * gateEnvelope
                         }
                     }
