@@ -10,7 +10,7 @@ import com.vaan.ultracarrier.audio.AudioHardwareChecker
 import com.vaan.ultracarrier.audio.AudioTransmitter
 import com.vaan.ultracarrier.audio.HardwareMode
 import com.vaan.ultracarrier.audio.ListeningPath
-import com.vaan.ultracarrier.audio.PcmAudio
+import com.vaan.ultracarrier.audio.PreparedAudioSource
 import com.vaan.ultracarrier.audio.ThoughtMode
 import com.vaan.ultracarrier.audio.TransmissionReport
 import com.vaan.ultracarrier.audio.TtsSynthesizer
@@ -29,13 +29,13 @@ import kotlin.math.roundToInt
 data class AppUiState(
     val text: String = "",
     val loadedName: String? = null,
-    val loadedAudio: PcmAudio? = null,
+    val loadedSource: PreparedAudioSource? = null,
     val hardware: HardwareMode? = null,
     val carrierHz: Float = 14_500f,
     val depth: Float = 0.38f,
     val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
     val listeningPath: ListeningPath = ListeningPath.HEADPHONES,
-    val status: String = "Connect headphones or bone conduction, prepare your source, then play it to yourself.",
+    val status: String = "Choose a file of any practical size, or prepare text, then play it to yourself.",
     val isBusy: Boolean = false,
     val isTransmitting: Boolean = false,
     val report: TransmissionReport? = null
@@ -114,7 +114,7 @@ class MainController(context: Context) : AutoCloseable {
 
     fun loadFile(uri: Uri) {
         scope.launch {
-            setBusy("Reading and decoding selected audio…")
+            setBusy("Reading file information…")
             try {
                 runCatching {
                     appContext.contentResolver.takePersistableUriPermission(
@@ -122,14 +122,15 @@ class MainController(context: Context) : AutoCloseable {
                         android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                     )
                 }
-                val audio = withContext(Dispatchers.IO) { decoder.decodeUri(uri) }
+                val info = withContext(Dispatchers.IO) { decoder.inspectUri(uri) }
                 val name = queryName(uri)
-                _waveform.value = preview(audio.samples)
+                val duration = info.durationSeconds?.let(::formatDuration) ?: "unknown length"
+                _waveform.value = FloatArray(0)
                 _uiState.value = _uiState.value.copy(
-                    loadedAudio = audio,
+                    loadedSource = PreparedAudioSource.StreamFile(uri, info),
                     loadedName = name,
                     isBusy = false,
-                    status = "Ready: $name. Start at low volume and tap PLAY TO SELF."
+                    status = "Ready: $name • $duration • ${info.formatLabel}. It will stream without loading the whole file."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -152,7 +153,7 @@ class MainController(context: Context) : AutoCloseable {
                 val name = "Self voice: ${text.take(36)}"
                 _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
-                    loadedAudio = audio,
+                    loadedSource = PreparedAudioSource.Memory(audio),
                     loadedName = name,
                     isBusy = false,
                     status = "Speech ready. Start low, then tap PLAY TO SELF."
@@ -164,12 +165,12 @@ class MainController(context: Context) : AutoCloseable {
     }
 
     fun transmitLoaded() {
-        val audio = _uiState.value.loadedAudio
-        if (audio == null) {
+        val source = _uiState.value.loadedSource
+        if (source == null) {
             _uiState.value = _uiState.value.copy(status = "Prepare text or choose a file first.")
             return
         }
-        startTransmission(audio)
+        startTransmission(source)
     }
 
     fun stopTransmission() {
@@ -192,7 +193,7 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = state.copy(status = "Private listening volume set to ${(fraction * 100).roundToInt()}%.")
     }
 
-    private fun startTransmission(audio: PcmAudio) {
+    private fun startTransmission(source: PreparedAudioSource) {
         val snapshot = _uiState.value
         val hardware = snapshot.hardware
         if (hardware == null) {
@@ -212,12 +213,13 @@ class MainController(context: Context) : AutoCloseable {
             isBusy = true,
             isTransmitting = true,
             report = null,
-            status = "Rendering ${snapshot.thoughtMode.label}: $sourceName…"
+            status = "Streaming ${snapshot.thoughtMode.label}: $sourceName…"
         )
         transmitJob = scope.launch(Dispatchers.IO) {
             try {
                 transmitter.transmit(
-                    pcm = audio,
+                    source = source,
+                    decoder = decoder,
                     requestedSampleRate = hardware.requestedSampleRate,
                     requestedCarrierHz = snapshot.carrierHz,
                     depth = snapshot.depth,
@@ -229,7 +231,7 @@ class MainController(context: Context) : AutoCloseable {
                             isBusy = false,
                             isTransmitting = true,
                             report = report,
-                            status = "${report.thoughtMode.label} playing through ${report.listeningPath.label}"
+                            status = "${report.thoughtMode.label} streaming through ${report.listeningPath.label}"
                         )
                     },
                     onWaveform = { _waveform.value = it }
@@ -253,16 +255,26 @@ class MainController(context: Context) : AutoCloseable {
 
     private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
         ListeningPath.HEADPHONES -> if (hardware.external) {
-            "Headphone route detected. Inner Voice places identical speech in both ears for a centered image."
+            "Headphone route detected. Unlimited files stream in small chunks instead of filling memory."
         } else {
             "Connect headphones for the strongest inside-the-head effect."
         }
+
         ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
             "External route detected. Select your bone-conduction headset in Android audio output."
         } else {
             "Connect a bone-conduction headset before playing."
         }
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Beam Whisper is the best mode for this route. ${hardware.detail}"
+
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Beam Whisper is the most directional profile. ${hardware.detail}"
+    }
+
+    private fun formatDuration(seconds: Double): String {
+        val total = seconds.roundToInt().coerceAtLeast(0)
+        val hours = total / 3_600
+        val minutes = total % 3_600 / 60
+        val remaining = total % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, remaining) else "%d:%02d".format(minutes, remaining)
     }
 
     private fun preview(samples: FloatArray, target: Int = 512): FloatArray {
