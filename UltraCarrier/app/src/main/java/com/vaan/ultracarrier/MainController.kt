@@ -131,7 +131,10 @@ class MainController(context: Context) : AutoCloseable {
         val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
         val depth = when (mode) {
             ThoughtMode.INNER_VOICE -> 0.38f
+            ThoughtMode.CENTER_LOCK -> 0.32f
             ThoughtMode.FREY_ACOUSTIC_SIM -> 0.42f
+            ThoughtMode.MASKED_WHISPER -> 0.28f
+            ThoughtMode.BONE_TAP -> 0.36f
             ThoughtMode.PATENT_SSB -> 0.42f
             ThoughtMode.FM_SLOPE -> 0.35f
             ThoughtMode.BEAM_WHISPER -> 0.50f
@@ -326,7 +329,11 @@ class MainController(context: Context) : AutoCloseable {
         val min = hardware.carrierMinHz
         val max = hardware.carrierMaxHz
         return when (mode) {
-            ThoughtMode.INNER_VOICE, ThoughtMode.FREY_ACOUSTIC_SIM -> 14_500f.coerceIn(min, max)
+            ThoughtMode.INNER_VOICE,
+            ThoughtMode.CENTER_LOCK,
+            ThoughtMode.FREY_ACOUSTIC_SIM,
+            ThoughtMode.MASKED_WHISPER,
+            ThoughtMode.BONE_TAP -> 14_500f.coerceIn(min, max)
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(min, max)
             ThoughtMode.BEAM_WHISPER -> (max - 250f).coerceIn(min, max)
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> {
@@ -338,16 +345,16 @@ class MainController(context: Context) : AutoCloseable {
 
     private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
         ListeningPath.HEADPHONES -> if (hardware.external) {
-            "Headphone route detected. Inner Voice and Frey Acoustic Simulator are available."
+            "Headphone route detected. Center Lock, Inner Voice, Cranial Click, and Masked Whisper are ready."
         } else {
             "Connect headphones for the strongest centered thought effect."
         }
         ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
-            "External route detected. Select your bone-conduction headset in Android audio output."
+            "External route detected. Bone Tap and Cranial Click are ready for your bone-conduction headset."
         } else {
             "Connect a bone-conduction headset before playing."
         }
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Inner Voice, Frey Acoustic Simulator, and Beam Whisper work on the phone itself. ${hardware.detail}"
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Cranial Click, Masked Whisper, Inner Voice, and Beam Whisper work on the phone itself. ${hardware.detail}"
         ListeningPath.EXTERNAL_ARRAY -> if (hardware.external) {
             "External route detected. Use a 96 or 192 kHz USB DAC and an ultrasonic transducer driver for Air Heterodyne or Array Steer."
         } else {
