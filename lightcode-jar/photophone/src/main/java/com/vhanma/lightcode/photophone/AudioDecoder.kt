@@ -116,7 +116,12 @@ internal object AudioDecoder {
 
         val mono = samples.toArray()
         require(mono.isNotEmpty()) { "The decoded song was empty." }
-        return OpticalProgram(mono, sampleRate, label)
+        return OpticalProgram(
+            samples = mono,
+            sampleRate = sampleRate,
+            label = "$label · looping until Stop",
+            loop = true
+        )
     }
 
     private class FloatBuilder(initialCapacity: Int = 524_288) {
