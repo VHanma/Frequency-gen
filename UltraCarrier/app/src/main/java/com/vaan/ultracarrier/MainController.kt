@@ -31,11 +31,15 @@ data class AppUiState(
     val loadedName: String? = null,
     val loadedAudio: PcmAudio? = null,
     val hardware: HardwareMode? = null,
-    val carrierHz: Float = 14_500f,
-    val depth: Float = 0.38f,
+    val carrierHz: Float = 18_000f,
+    val depth: Float = 0.42f,
     val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
-    val listeningPath: ListeningPath = ListeningPath.HEADPHONES,
-    val status: String = "Connect headphones or bone conduction, prepare your source, then play it to yourself.",
+    val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
+    val steeringAngleDeg: Float = 0f,
+    val transducerSpacingMm: Float = 8.5f,
+    val chirpSweepHz: Float = 4_000f,
+    val chirpPeriodMs: Float = 20f,
+    val status: String = "Prepare text or choose a file, then play through the phone or an external acoustic array.",
     val isBusy: Boolean = false,
     val isTransmitting: Boolean = false,
     val report: TransmissionReport? = null
@@ -81,6 +85,22 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = _uiState.value.copy(depth = value.coerceIn(0.05f, 1f))
     }
 
+    fun setSteeringAngle(value: Float) {
+        _uiState.value = _uiState.value.copy(steeringAngleDeg = value.coerceIn(-60f, 60f))
+    }
+
+    fun setTransducerSpacing(value: Float) {
+        _uiState.value = _uiState.value.copy(transducerSpacingMm = value.coerceIn(1f, 50f))
+    }
+
+    fun setChirpSweep(value: Float) {
+        _uiState.value = _uiState.value.copy(chirpSweepHz = value.coerceIn(100f, 12_000f))
+    }
+
+    fun setChirpPeriod(value: Float) {
+        _uiState.value = _uiState.value.copy(chirpPeriodMs = value.coerceIn(2f, 250f))
+    }
+
     fun setThoughtMode(mode: ThoughtMode) {
         val old = _uiState.value
         val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
@@ -89,6 +109,9 @@ class MainController(context: Context) : AutoCloseable {
             ThoughtMode.PATENT_SSB -> 0.42f
             ThoughtMode.FM_SLOPE -> 0.35f
             ThoughtMode.BEAM_WHISPER -> 0.50f
+            ThoughtMode.AIR_HETERODYNE -> 0.45f
+            ThoughtMode.ARRAY_STEER -> 0.42f
+            ThoughtMode.CHIRP_CARRIER -> 0.38f
         }
         _uiState.value = old.copy(
             thoughtMode = mode,
@@ -104,10 +127,12 @@ class MainController(context: Context) : AutoCloseable {
             ListeningPath.HEADPHONES -> 0.38f
             ListeningPath.BONE_CONDUCTION -> 0.32f
             ListeningPath.PHONE_SPEAKER -> 0.50f
+            ListeningPath.EXTERNAL_ARRAY -> 0.44f
         }
         _uiState.value = old.copy(
             listeningPath = path,
             depth = depth,
+            carrierHz = old.hardware?.let { profileCarrier(old.thoughtMode, it) } ?: old.carrierHz,
             status = old.hardware?.let { routeStatus(path, it) } ?: path.description
         )
     }
@@ -129,7 +154,7 @@ class MainController(context: Context) : AutoCloseable {
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Ready: $name. Start at low volume and tap PLAY TO SELF."
+                    status = "Ready: $name. Tap PLAY ACOUSTIC SIGNAL."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -149,13 +174,13 @@ class MainController(context: Context) : AutoCloseable {
                 val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
                 val audio = withContext(Dispatchers.IO) { decoder.decodeFile(file) }
                 file.delete()
-                val name = "Self voice: ${text.take(36)}"
+                val name = "Acoustic voice: ${text.take(36)}"
                 _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Speech ready. Start low, then tap PLAY TO SELF."
+                    status = "Speech ready. Tap PLAY ACOUSTIC SIGNAL."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -186,10 +211,11 @@ class MainController(context: Context) : AutoCloseable {
             ListeningPath.HEADPHONES -> 0.25f
             ListeningPath.BONE_CONDUCTION -> 0.20f
             ListeningPath.PHONE_SPEAKER -> 0.52f
+            ListeningPath.EXTERNAL_ARRAY -> 0.35f
         }
         val target = (max * fraction).roundToInt().coerceIn(1, max)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        _uiState.value = state.copy(status = "Private listening volume set to ${(fraction * 100).roundToInt()}%.")
+        _uiState.value = state.copy(status = "Acoustic output volume set to ${(fraction * 100).roundToInt()}%.")
     }
 
     private fun startTransmission(audio: PcmAudio) {
@@ -200,7 +226,7 @@ class MainController(context: Context) : AutoCloseable {
             return
         }
         if (snapshot.listeningPath != ListeningPath.PHONE_SPEAKER && !hardware.external) {
-            _uiState.value = snapshot.copy(status = "Connect headphones or a bone-conduction headset, then try again.")
+            _uiState.value = snapshot.copy(status = "Connect the selected external audio device, then try again.")
             return
         }
 
@@ -223,6 +249,10 @@ class MainController(context: Context) : AutoCloseable {
                     depth = snapshot.depth,
                     thoughtMode = snapshot.thoughtMode,
                     listeningPath = snapshot.listeningPath,
+                    steeringAngleDeg = snapshot.steeringAngleDeg,
+                    transducerSpacingMm = snapshot.transducerSpacingMm,
+                    chirpSweepHz = snapshot.chirpSweepHz,
+                    chirpPeriodMs = snapshot.chirpPeriodMs,
                     preferredDevice = hardware.outputDevice,
                     onStarted = { report ->
                         _uiState.value = _uiState.value.copy(
@@ -245,24 +275,37 @@ class MainController(context: Context) : AutoCloseable {
         }
     }
 
-    private fun profileCarrier(mode: ThoughtMode, hardware: HardwareMode): Float = when (mode) {
-        ThoughtMode.INNER_VOICE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
-        ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
-        ThoughtMode.BEAM_WHISPER -> (hardware.carrierMaxHz - 250f).coerceAtLeast(hardware.carrierMinHz)
+    private fun profileCarrier(mode: ThoughtMode, hardware: HardwareMode): Float {
+        val min = hardware.carrierMinHz
+        val max = hardware.carrierMaxHz
+        return when (mode) {
+            ThoughtMode.INNER_VOICE -> 14_500f.coerceIn(min, max)
+            ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(min, max)
+            ThoughtMode.BEAM_WHISPER -> (max - 250f).coerceIn(min, max)
+            ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> {
+                val target = if (max >= 39_500f) 39_000f else max - 500f
+                target.coerceIn(min, max)
+            }
+        }
     }
 
     private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
         ListeningPath.HEADPHONES -> if (hardware.external) {
-            "Headphone route detected. Inner Voice places identical speech in both ears for a centered image."
+            "Headphone route detected. Inner Voice remains available unchanged."
         } else {
-            "Connect headphones for the strongest inside-the-head effect."
+            "Connect headphones for the centered listening profiles."
         }
         ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
             "External route detected. Select your bone-conduction headset in Android audio output."
         } else {
             "Connect a bone-conduction headset before playing."
         }
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Beam Whisper is the best mode for this route. ${hardware.detail}"
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Inner Voice and Beam Whisper work best on the phone itself. ${hardware.detail}"
+        ListeningPath.EXTERNAL_ARRAY -> if (hardware.external) {
+            "External route detected. Use a 96 or 192 kHz USB DAC and an ultrasonic transducer driver for Air Heterodyne or Array Steer."
+        } else {
+            "Connect a stereo USB DAC or external ultrasonic array driver."
+        }
     }
 
     private fun preview(samples: FloatArray, target: Int = 512): FloatArray {
