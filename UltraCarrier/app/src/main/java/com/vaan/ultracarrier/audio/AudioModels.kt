@@ -13,6 +13,10 @@ enum class ThoughtMode(val label: String, val description: String) {
         "Inner Voice",
         "The proven centered voice engine from the working InnerVoice app."
     ),
+    FREY_ACOUSTIC_SIM(
+        "Frey Acoustic Simulator",
+        "Ordinary audio that blends the source with brief zero-DC click packets to imitate the reported click-like perception without emitting microwaves."
+    ),
     PATENT_SSB(
         "Patent SSB",
         "Experimental upper-sideband, suppressed-carrier translation inspired by US5159703A."
@@ -50,7 +54,7 @@ enum class ListeningPath(val label: String, val description: String) {
     ),
     PHONE_SPEAKER(
         "Phone Speaker",
-        "Uses the phone speaker. Inner Voice and Beam Whisper are the useful phone-only profiles."
+        "Uses the phone speaker. Inner Voice, Frey Acoustic Simulator, and Beam Whisper are the useful phone-only profiles."
     ),
     EXTERNAL_ARRAY(
         "External Ultrasonic Array",
@@ -77,5 +81,7 @@ data class TransmissionReport(
     val listeningPath: ListeningPath,
     val outputGain: Float,
     val arrayPhaseDegrees: Float = 0f,
-    val chirpSweepHz: Float = 0f
+    val chirpSweepHz: Float = 0f,
+    val clickRateHz: Float = 0f,
+    val clickWidthMs: Float = 0f
 )
