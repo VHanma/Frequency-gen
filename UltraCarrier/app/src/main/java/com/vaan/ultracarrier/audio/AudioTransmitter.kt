@@ -10,6 +10,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tanh
@@ -38,6 +39,8 @@ class AudioTransmitter {
         transducerSpacingMm: Float,
         chirpSweepHz: Float,
         chirpPeriodMs: Float,
+        clickRateHz: Float,
+        clickWidthMs: Float,
         preferredDevice: AudioDeviceInfo?,
         onStarted: (TransmissionReport) -> Unit,
         onWaveform: (FloatArray) -> Unit
@@ -50,7 +53,9 @@ class AudioTransmitter {
         val channels = if (stereo) 2 else 1
         activeTrack = track
 
-        val carrier = if (thoughtMode == ThoughtMode.INNER_VOICE) 0f else {
+        val carrier = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) {
+            0f
+        } else {
             DspMath.clampCarrier(sampleRate, requestedCarrierHz)
         }
         val maximumBandwidth = if (carrier > 0f) {
@@ -59,7 +64,7 @@ class AudioTransmitter {
             4_000f
         }
         val bandwidth = when (thoughtMode) {
-            ThoughtMode.INNER_VOICE -> 3_800f
+            ThoughtMode.INNER_VOICE, ThoughtMode.FREY_ACOUSTIC_SIM -> 3_800f
             ThoughtMode.PATENT_SSB -> min(maximumBandwidth, 3_400f)
             ThoughtMode.FM_SLOPE -> min(maximumBandwidth, 3_200f)
             ThoughtMode.BEAM_WHISPER -> min(maximumBandwidth, 3_100f)
@@ -78,7 +83,7 @@ class AudioTransmitter {
         val sourceStep = pcm.sampleRate.toDouble() / sampleRate
         val totalOutputFrames = (pcm.samples.size / sourceStep).toLong().coerceAtLeast(1L)
         val constantPhaseStep = if (carrier > 0f) 2.0 * PI * carrier / sampleRate else 0.0
-        val fadeSeconds = if (thoughtMode == ThoughtMode.INNER_VOICE) 0.12 else 0.08
+        val fadeSeconds = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) 0.12 else 0.08
         val fadeFrames = max(1, (sampleRate * fadeSeconds).toInt())
         val block = FloatArray(BLOCK_FRAMES * channels)
         val messageMonitor = FloatArray(BLOCK_FRAMES)
@@ -108,6 +113,12 @@ class AudioTransmitter {
         val chirpHigh = (carrier + safeSweep / 2f).coerceAtMost(sampleRate / 2f - 800f)
         val chirpFrames = max(1L, (sampleRate * chirpPeriodMs.coerceIn(2f, 250f) / 1000f).toLong())
 
+        val safeClickRate = clickRateHz.coerceIn(2f, 40f)
+        val safeClickWidth = clickWidthMs.coerceIn(0.3f, 4f)
+        val clickIntervalFrames = max(1, (sampleRate / safeClickRate).roundToInt())
+        val clickWidthFrames = max(8, (sampleRate * safeClickWidth / 1000f).roundToInt())
+        val clickToneHz = 1_200f + 1_200f * effectiveDepth
+
         try {
             track.play()
             val routeName = track.routedDevice?.productName?.toString().orEmpty()
@@ -123,7 +134,9 @@ class AudioTransmitter {
                     listeningPath = listeningPath,
                     outputGain = outputGain,
                     arrayPhaseDegrees = phaseDegrees,
-                    chirpSweepHz = if (thoughtMode == ThoughtMode.CHIRP_CARRIER) chirpHigh - chirpLow else 0f
+                    chirpSweepHz = if (thoughtMode == ThoughtMode.CHIRP_CARRIER) chirpHigh - chirpLow else 0f,
+                    clickRateHz = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) safeClickRate else 0f,
+                    clickWidthMs = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) safeClickWidth else 0f
                 )
             )
 
@@ -132,7 +145,7 @@ class AudioTransmitter {
                 for (i in 0 until frames) {
                     val raw = DspMath.interpolate(pcm.samples, sourcePosition)
                     val bandLimited = highPass.process(lowPass.process(raw))
-                    val drive = if (thoughtMode == ThoughtMode.INNER_VOICE) 2.2f else 3.1f
+                    val drive = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) 2.2f else 3.1f
                     val message = tanh((bandLimited * drive).toDouble()).toFloat().coerceIn(-1f, 1f)
                     val gateTarget = if (abs(message) > 0.006f) 1f else 0f
                     val gateSpeed = if (gateTarget > gateEnvelope) 0.035f else 0.004f
@@ -149,6 +162,24 @@ class AudioTransmitter {
                         ThoughtMode.INNER_VOICE -> {
                             leftEncoded = message
                             rightEncoded = message
+                        }
+
+                        ThoughtMode.FREY_ACOUSTIC_SIM -> {
+                            val localFrame = (absoluteFrame % clickIntervalFrames).toInt()
+                            val click = if (localFrame < clickWidthFrames) {
+                                val position = localFrame.toFloat() / clickWidthFrames
+                                val window = 0.5f - 0.5f * cos((2.0 * PI * position).toFloat())
+                                val tone = sin((2.0 * PI * clickToneHz * localFrame / sampleRate).toFloat())
+                                tone * window
+                            } else {
+                                0f
+                            }
+                            val clickAmount = 0.10f + 0.30f * effectiveDepth
+                            val sourceAmount = 0.82f - 0.18f * effectiveDepth
+                            val speechEnergy = sqrt(abs(message) + 0.05f)
+                            val simulated = message * sourceAmount + click * clickAmount * speechEnergy * gateEnvelope
+                            leftEncoded = simulated
+                            rightEncoded = simulated
                         }
 
                         ThoughtMode.PATENT_SSB -> {
@@ -242,22 +273,26 @@ class AudioTransmitter {
     private fun outputGain(mode: ThoughtMode, path: ListeningPath, depth: Float): Float = when (path) {
         ListeningPath.HEADPHONES -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.035f + 0.18f * depth
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 0.045f + 0.19f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.05f + 0.22f * depth
             ThoughtMode.BEAM_WHISPER -> 0.07f + 0.24f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.04f + 0.16f * depth
         }
         ListeningPath.BONE_CONDUCTION -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.06f + 0.27f * depth
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 0.055f + 0.24f * depth
             else -> 0.08f + 0.28f * depth
         }
         ListeningPath.PHONE_SPEAKER -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.10f + 0.26f * depth
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 0.13f + 0.34f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.12f + 0.30f * depth
             ThoughtMode.BEAM_WHISPER -> 0.15f + 0.34f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.10f + 0.24f * depth
         }
         ListeningPath.EXTERNAL_ARRAY -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.08f + 0.25f * depth
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 0.08f + 0.24f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE, ThoughtMode.BEAM_WHISPER -> 0.12f + 0.32f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.18f + 0.42f * depth
         }
