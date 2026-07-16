@@ -8,23 +8,37 @@ data class PcmAudio(
     val durationSeconds: Double
 )
 
-enum class ModulationMode(val label: String) {
-    AM("AM envelope"),
-    DSB_SC("Reduced-carrier DSB")
+enum class ThoughtMode(val label: String, val description: String) {
+    INNER_VOICE(
+        "Inner Voice",
+        "Centered, narrow-band speech for headphones or bone conduction. This is the most convincing thought-like mode."
+    ),
+    PATENT_SSB(
+        "Patent SSB",
+        "Experimental upper-sideband, suppressed-carrier translation inspired by US5159703A."
+    ),
+    FM_SLOPE(
+        "FM Slope",
+        "Experimental high-frequency FM inspired by the patent's slope-detection example."
+    ),
+    BEAM_WHISPER(
+        "Beam Whisper",
+        "Reduced-carrier directional mode inherited from UltraCarrier Beam."
+    )
 }
 
-enum class PrivacyMode(val label: String, val description: String) {
-    PHONE_BEAM(
-        "Phone Beam",
-        "Reduces audible leakage and uses the highest safe phone carrier. The phone speaker still limits beam width."
+enum class ListeningPath(val label: String, val description: String) {
+    HEADPHONES(
+        "Headphones",
+        "Identical left and right channels place the voice near the center of the head."
     ),
-    STANDARD(
-        "Standard",
-        "Strongest phone output with less leakage suppression."
+    BONE_CONDUCTION(
+        "Bone Conduction",
+        "Filtered speech for a bone-conduction headset. Start at low volume."
     ),
-    EXTERNAL_ARRAY(
-        "External Array",
-        "For a USB DAC and ultrasonic transducer array. This is the path to a genuinely narrow beam."
+    PHONE_SPEAKER(
+        "Phone Speaker",
+        "Uses the phone speaker. Beam Whisper works best here; Inner Voice is less internal without headphones."
     )
 }
 
@@ -43,6 +57,7 @@ data class TransmissionReport(
     val actualCarrierHz: Float,
     val messageBandwidthHz: Float,
     val routedDeviceName: String,
-    val privacyMode: PrivacyMode,
+    val thoughtMode: ThoughtMode,
+    val listeningPath: ListeningPath,
     val outputGain: Float
 )
