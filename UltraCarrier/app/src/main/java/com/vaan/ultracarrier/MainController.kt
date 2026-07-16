@@ -9,9 +9,9 @@ import com.vaan.ultracarrier.audio.AudioFileDecoder
 import com.vaan.ultracarrier.audio.AudioHardwareChecker
 import com.vaan.ultracarrier.audio.AudioTransmitter
 import com.vaan.ultracarrier.audio.HardwareMode
-import com.vaan.ultracarrier.audio.ModulationMode
+import com.vaan.ultracarrier.audio.ListeningPath
 import com.vaan.ultracarrier.audio.PcmAudio
-import com.vaan.ultracarrier.audio.PrivacyMode
+import com.vaan.ultracarrier.audio.ThoughtMode
 import com.vaan.ultracarrier.audio.TransmissionReport
 import com.vaan.ultracarrier.audio.TtsSynthesizer
 import kotlinx.coroutines.CoroutineScope
@@ -31,11 +31,11 @@ data class AppUiState(
     val loadedName: String? = null,
     val loadedAudio: PcmAudio? = null,
     val hardware: HardwareMode? = null,
-    val carrierHz: Float = 21_000f,
-    val depth: Float = 0.55f,
-    val modulationMode: ModulationMode = ModulationMode.DSB_SC,
-    val privacyMode: PrivacyMode = PrivacyMode.PHONE_BEAM,
-    val status: String = "Load text or a file, aim the speaker, then transmit.",
+    val carrierHz: Float = 14_500f,
+    val depth: Float = 0.38f,
+    val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
+    val listeningPath: ListeningPath = ListeningPath.HEADPHONES,
+    val status: String = "Connect headphones or bone conduction, prepare your source, then play it to yourself.",
     val isBusy: Boolean = false,
     val isTransmitting: Boolean = false,
     val report: TransmissionReport? = null
@@ -60,11 +60,10 @@ class MainController(context: Context) : AutoCloseable {
     init {
         hardwareChecker.start { hardware ->
             val old = _uiState.value
-            val carrier = profileCarrier(old.privacyMode, hardware)
             _uiState.value = old.copy(
                 hardware = hardware,
-                carrierHz = carrier,
-                status = if (old.isTransmitting) old.status else profileStatus(old.privacyMode, hardware)
+                carrierHz = profileCarrier(old.thoughtMode, hardware),
+                status = if (old.isTransmitting) old.status else routeStatus(old.listeningPath, hardware)
             )
         }
     }
@@ -82,30 +81,34 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = _uiState.value.copy(depth = value.coerceIn(0.05f, 1f))
     }
 
-    fun setMode(mode: ModulationMode) {
-        _uiState.value = _uiState.value.copy(modulationMode = mode)
-    }
-
-    fun setPrivacyMode(mode: PrivacyMode) {
+    fun setThoughtMode(mode: ThoughtMode) {
         val old = _uiState.value
-        val hardware = old.hardware
-        val carrier = hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
+        val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
         val depth = when (mode) {
-            PrivacyMode.PHONE_BEAM -> 0.55f
-            PrivacyMode.STANDARD -> 0.90f
-            PrivacyMode.EXTERNAL_ARRAY -> 0.70f
-        }
-        val modulation = when (mode) {
-            PrivacyMode.PHONE_BEAM -> ModulationMode.DSB_SC
-            PrivacyMode.STANDARD -> ModulationMode.AM
-            PrivacyMode.EXTERNAL_ARRAY -> ModulationMode.AM
+            ThoughtMode.INNER_VOICE -> 0.38f
+            ThoughtMode.PATENT_SSB -> 0.42f
+            ThoughtMode.FM_SLOPE -> 0.35f
+            ThoughtMode.BEAM_WHISPER -> 0.50f
         }
         _uiState.value = old.copy(
-            privacyMode = mode,
+            thoughtMode = mode,
             carrierHz = carrier,
             depth = depth,
-            modulationMode = modulation,
-            status = hardware?.let { profileStatus(mode, it) } ?: mode.description
+            status = mode.description
+        )
+    }
+
+    fun setListeningPath(path: ListeningPath) {
+        val old = _uiState.value
+        val depth = when (path) {
+            ListeningPath.HEADPHONES -> 0.38f
+            ListeningPath.BONE_CONDUCTION -> 0.32f
+            ListeningPath.PHONE_SPEAKER -> 0.50f
+        }
+        _uiState.value = old.copy(
+            listeningPath = path,
+            depth = depth,
+            status = old.hardware?.let { routeStatus(path, it) } ?: path.description
         )
     }
 
@@ -126,7 +129,7 @@ class MainController(context: Context) : AutoCloseable {
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Ready: $name. Aim the speaker opening, then tap AIM & TRANSMIT."
+                    status = "Ready: $name. Start at low volume and tap PLAY TO SELF."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -141,18 +144,18 @@ class MainController(context: Context) : AutoCloseable {
             return
         }
         scope.launch {
-            setBusy("Converting your text into speech audio…")
+            setBusy("Turning your text into speech…")
             try {
                 val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
                 val audio = withContext(Dispatchers.IO) { decoder.decodeFile(file) }
                 file.delete()
-                val name = "Speech: ${text.take(36)}"
+                val name = "Self voice: ${text.take(36)}"
                 _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Speech ready. Aim the speaker opening, then tap AIM & TRANSMIT."
+                    status = "Speech ready. Start low, then tap PLAY TO SELF."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -173,14 +176,20 @@ class MainController(context: Context) : AutoCloseable {
         transmitter.stop()
         transmitJob?.cancel()
         transmitJob = null
-        _uiState.value = _uiState.value.copy(isBusy = false, isTransmitting = false, status = "Transmission stopped")
+        _uiState.value = _uiState.value.copy(isBusy = false, isTransmitting = false, status = "Playback stopped")
     }
 
-    fun setPrivacyVolume() {
+    fun setSafeVolume() {
+        val state = _uiState.value
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val target = (max * 0.68f).roundToInt().coerceIn(1, max)
+        val fraction = when (state.listeningPath) {
+            ListeningPath.HEADPHONES -> 0.25f
+            ListeningPath.BONE_CONDUCTION -> 0.20f
+            ListeningPath.PHONE_SPEAKER -> 0.52f
+        }
+        val target = (max * fraction).roundToInt().coerceIn(1, max)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        _uiState.value = _uiState.value.copy(status = "Media volume set near 68% to reduce sideways leakage.")
+        _uiState.value = state.copy(status = "Private listening volume set to ${(fraction * 100).roundToInt()}%.")
     }
 
     private fun startTransmission(audio: PcmAudio) {
@@ -190,10 +199,8 @@ class MainController(context: Context) : AutoCloseable {
             _uiState.value = snapshot.copy(status = "Audio hardware is still initializing.")
             return
         }
-        if (snapshot.privacyMode == PrivacyMode.EXTERNAL_ARRAY && !hardware.external) {
-            _uiState.value = snapshot.copy(
-                status = "External Array needs a USB audio output and ultrasonic transducer array."
-            )
+        if (snapshot.listeningPath != ListeningPath.PHONE_SPEAKER && !hardware.external) {
+            _uiState.value = snapshot.copy(status = "Connect headphones or a bone-conduction headset, then try again.")
             return
         }
 
@@ -201,11 +208,11 @@ class MainController(context: Context) : AutoCloseable {
         transmitJob?.cancel()
         transmitJob = null
         val sourceName = snapshot.loadedName ?: "selected audio"
-        _uiState.value = _uiState.value.copy(
+        _uiState.value = snapshot.copy(
             isBusy = true,
             isTransmitting = true,
             report = null,
-            status = "Beam encoding $sourceName… Keep the speaker pointed at the target."
+            status = "Rendering ${snapshot.thoughtMode.label}: $sourceName…"
         )
         transmitJob = scope.launch(Dispatchers.IO) {
             try {
@@ -214,15 +221,15 @@ class MainController(context: Context) : AutoCloseable {
                     requestedSampleRate = hardware.requestedSampleRate,
                     requestedCarrierHz = snapshot.carrierHz,
                     depth = snapshot.depth,
-                    mode = snapshot.modulationMode,
-                    privacyMode = snapshot.privacyMode,
+                    thoughtMode = snapshot.thoughtMode,
+                    listeningPath = snapshot.listeningPath,
                     preferredDevice = hardware.outputDevice,
                     onStarted = { report ->
                         _uiState.value = _uiState.value.copy(
                             isBusy = false,
                             isTransmitting = true,
                             report = report,
-                            status = "${report.privacyMode.label}: $sourceName at ${report.actualCarrierHz.roundToInt()} Hz"
+                            status = "${report.thoughtMode.label} playing through ${report.listeningPath.label}"
                         )
                     },
                     onWaveform = { _waveform.value = it }
@@ -230,7 +237,7 @@ class MainController(context: Context) : AutoCloseable {
                 _uiState.value = _uiState.value.copy(
                     isBusy = false,
                     isTransmitting = false,
-                    status = "Finished transmitting $sourceName"
+                    status = "Finished playing $sourceName"
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -238,22 +245,24 @@ class MainController(context: Context) : AutoCloseable {
         }
     }
 
-    private fun profileCarrier(mode: PrivacyMode, hardware: HardwareMode): Float = when (mode) {
-        PrivacyMode.PHONE_BEAM -> (hardware.carrierMaxHz - 250f).coerceAtLeast(hardware.carrierMinHz)
-        PrivacyMode.STANDARD -> (if (hardware.external) 30_000f else 18_000f)
-            .coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
-        PrivacyMode.EXTERNAL_ARRAY -> 38_000f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
+    private fun profileCarrier(mode: ThoughtMode, hardware: HardwareMode): Float = when (mode) {
+        ThoughtMode.INNER_VOICE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
+        ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
+        ThoughtMode.BEAM_WHISPER -> (hardware.carrierMaxHz - 250f).coerceAtLeast(hardware.carrierMinHz)
     }
 
-    private fun profileStatus(mode: PrivacyMode, hardware: HardwareMode): String = when (mode) {
-        PrivacyMode.PHONE_BEAM ->
-            "Phone Beam active. ${hardware.detail} Software lowers leakage, but the phone speaker cannot form a perfectly private beam."
-        PrivacyMode.STANDARD -> hardware.detail
-        PrivacyMode.EXTERNAL_ARRAY -> if (hardware.external) {
-            "External output detected. Connect an ultrasonic array for the narrowest beam."
+    private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
+        ListeningPath.HEADPHONES -> if (hardware.external) {
+            "Headphone route detected. Inner Voice places identical speech in both ears for a centered image."
         } else {
-            "External Array selected, but no USB audio output is connected."
+            "Connect headphones for the strongest inside-the-head effect."
         }
+        ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
+            "External route detected. Select your bone-conduction headset in Android audio output."
+        } else {
+            "Connect a bone-conduction headset before playing."
+        }
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Beam Whisper is the best mode for this route. ${hardware.detail}"
     }
 
     private fun preview(samples: FloatArray, target: Int = 512): FloatArray {
