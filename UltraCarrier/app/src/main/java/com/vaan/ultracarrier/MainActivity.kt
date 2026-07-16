@@ -44,8 +44,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vaan.ultracarrier.audio.DspMath
-import com.vaan.ultracarrier.audio.ModulationMode
-import com.vaan.ultracarrier.audio.PrivacyMode
+import com.vaan.ultracarrier.audio.ListeningPath
+import com.vaan.ultracarrier.audio.ThoughtMode
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -57,23 +57,23 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by controller.uiState.collectAsState()
             val waveform by controller.waveform.collectAsState()
-            UltraCarrierTheme {
+            InnerVoiceTheme {
                 val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                     uri?.let(controller::loadFile)
                 }
-                UltraCarrierScreen(
+                InnerVoiceScreen(
                     state = state,
                     waveform = waveform,
                     onTextChanged = controller::setText,
                     onPickFile = { picker.launch(arrayOf("audio/*", "application/octet-stream")) },
                     onCarrierChanged = controller::setCarrier,
                     onDepthChanged = controller::setDepth,
-                    onModeChanged = controller::setMode,
-                    onPrivacyChanged = controller::setPrivacyMode,
+                    onThoughtModeChanged = controller::setThoughtMode,
+                    onListeningPathChanged = controller::setListeningPath,
                     onPrepareText = controller::synthesizeAndPrepare,
                     onTransmit = controller::transmitLoaded,
                     onStop = controller::stopTransmission,
-                    onPrivacyVolume = controller::setPrivacyVolume
+                    onSafeVolume = controller::setSafeVolume
                 )
             }
         }
@@ -86,37 +86,37 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun UltraCarrierTheme(content: @Composable () -> Unit) {
+private fun InnerVoiceTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Color(0xFF00E5FF),
-            secondary = Color(0xFF9C6BFF),
-            background = Color(0xFF050912),
-            surface = Color(0xFF111827),
-            onBackground = Color(0xFFE8F0FF),
-            onSurface = Color(0xFFE8F0FF)
+            primary = Color(0xFFC8A8FF),
+            secondary = Color(0xFF65E9FF),
+            background = Color(0xFF050713),
+            surface = Color(0xFF12152A),
+            onBackground = Color(0xFFF2ECFF),
+            onSurface = Color(0xFFF2ECFF)
         ),
         content = content
     )
 }
 
 @Composable
-private fun UltraCarrierScreen(
+private fun InnerVoiceScreen(
     state: AppUiState,
     waveform: FloatArray,
     onTextChanged: (String) -> Unit,
     onPickFile: () -> Unit,
     onCarrierChanged: (Float) -> Unit,
     onDepthChanged: (Float) -> Unit,
-    onModeChanged: (ModulationMode) -> Unit,
-    onPrivacyChanged: (PrivacyMode) -> Unit,
+    onThoughtModeChanged: (ThoughtMode) -> Unit,
+    onListeningPathChanged: (ListeningPath) -> Unit,
     onPrepareText: () -> Unit,
     onTransmit: () -> Unit,
     onStop: () -> Unit,
-    onPrivacyVolume: () -> Unit
+    onSafeVolume: () -> Unit
 ) {
     val hardware = state.hardware
-    val minCarrier = hardware?.carrierMinHz ?: 15_000f
+    val minCarrier = hardware?.carrierMinHz ?: 13_500f
     val maxCarrier = hardware?.carrierMaxHz ?: 22_000f
     val predictedBandwidth = DspMath.safeMessageBandwidth(
         hardware?.requestedSampleRate ?: 48_000,
@@ -131,36 +131,45 @@ private fun UltraCarrierScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("ULTRACARRIER BEAM", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("ULTRACARRIER INNERVOICE", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "A privacy-focused clone that suppresses audible sideways leakage before transmission.",
-            color = Color(0xFF9DB0D0)
+            "A separate self-listening clone for centered, thought-like speech and patent-inspired signal experiments.",
+            color = Color(0xFFAFA6CB)
         )
 
         InfoCard(
             title = hardware?.label ?: "Detecting audio route…",
-            body = hardware?.detail ?: "Checking connected outputs and native sample rate."
+            body = hardware?.detail ?: "Checking the active speaker or headset."
         )
 
-        ControlCard(title = "Privacy profile") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrivacyMode.entries.forEach { profile ->
-                    FilterChip(
-                        selected = state.privacyMode == profile,
-                        onClick = { onPrivacyChanged(profile) },
-                        label = { Text(profile.label) }
-                    )
-                }
+        ControlCard(title = "Listening path") {
+            ListeningPath.entries.forEach { path ->
+                FilterChip(
+                    selected = state.listeningPath == path,
+                    onClick = { onListeningPathChanged(path) },
+                    label = { Text(path.label) }
+                )
             }
-            Text(state.privacyMode.description, color = Color(0xFF9DB0D0))
+            Text(state.listeningPath.description, color = Color(0xFFAFA6CB))
+        }
+
+        ControlCard(title = "Perception engine") {
+            ThoughtMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = state.thoughtMode == mode,
+                    onClick = { onThoughtModeChanged(mode) },
+                    label = { Text(mode.label) }
+                )
+            }
+            Text(state.thoughtMode.description, color = Color(0xFFAFA6CB))
         }
 
         OutlinedTextField(
             value = state.text,
             onValueChange = onTextChanged,
             modifier = Modifier.fillMaxWidth().height(140.dp),
-            label = { Text("Text to convert into speech") },
-            placeholder = { Text("Type a phrase or paragraph…") }
+            label = { Text("Text for your private voice") },
+            placeholder = { Text("Type a phrase, reflection, or affirmation…") }
         )
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -174,7 +183,7 @@ private fun UltraCarrierScreen(
 
         Text(
             state.loadedName?.let { "Ready source: $it" } ?: "Ready source: none",
-            color = Color(0xFFB8C7E3)
+            color = Color(0xFFC9C1E2)
         )
 
         Button(
@@ -182,60 +191,54 @@ private fun UltraCarrierScreen(
             enabled = state.loadedAudio != null && !state.isBusy,
             modifier = Modifier.fillMaxWidth().height(58.dp)
         ) {
-            Text("AIM & TRANSMIT", fontWeight = FontWeight.Black)
-        }
-        Text(
-            "Point the phone's actual speaker opening at the listener before pressing the button.",
-            color = Color(0xFF9DB0D0)
-        )
-
-        ControlCard(title = "Carrier frequency") {
-            Text("${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
-            Slider(
-                value = state.carrierHz.coerceIn(minCarrier, maxCarrier),
-                onValueChange = onCarrierChanged,
-                valueRange = minCarrier..maxCarrier
-            )
-            Text(
-                "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available message bandwidth ${predictedBandwidth.roundToInt()} Hz.",
-                color = Color(0xFF9DB0D0)
-            )
+            Text("PLAY TO SELF", fontWeight = FontWeight.Black)
         }
 
-        ControlCard(title = "Leak suppression and encoding") {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModulationMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = state.modulationMode == mode,
-                        onClick = { onModeChanged(mode) },
-                        label = { Text(mode.label) }
-                    )
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text("Target strength ${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+        ControlCard(title = "Presence") {
+            Text("${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
             Slider(value = state.depth, onValueChange = onDepthChanged, valueRange = 0.05f..1f)
             Text(
-                "Lower strength leaks less sideways. Phone Beam automatically narrows speech bandwidth and uses reduced carrier.",
-                color = Color(0xFF9DB0D0)
+                "Lower settings feel more distant and blend into attention. Raise slowly until the voice feels centered but comfortable.",
+                color = Color(0xFFAFA6CB)
             )
         }
 
-        ControlCard(title = "Message waveform") {
+        if (state.thoughtMode != ThoughtMode.INNER_VOICE) {
+            ControlCard(title = "Experimental carrier") {
+                Text("${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
+                Slider(
+                    value = state.carrierHz.coerceIn(minCarrier, maxCarrier),
+                    onValueChange = onCarrierChanged,
+                    valueRange = minCarrier..maxCarrier
+                )
+                Text(
+                    "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available sideband width ${predictedBandwidth.roundToInt()} Hz.",
+                    color = Color(0xFFAFA6CB)
+                )
+            }
+        }
+
+        ControlCard(title = "Voice waveform") {
             WaveformCanvas(waveform)
         }
 
         state.report?.let { report ->
             InfoCard(
-                title = "Active ${report.privacyMode.label}",
-                body = "${report.actualSampleRate} Hz PCM float • ${report.actualCarrierHz.roundToInt()} Hz carrier • " +
-                    "${report.messageBandwidthHz.roundToInt()} Hz message bandwidth • output ${(report.outputGain * 100).roundToInt()}% • ${report.routedDeviceName}"
+                title = "Active ${report.thoughtMode.label}",
+                body = buildString {
+                    append("${report.actualSampleRate} Hz PCM float")
+                    if (report.actualCarrierHz > 0f) append(" • ${report.actualCarrierHz.roundToInt()} Hz carrier")
+                    append(" • ${report.messageBandwidthHz.roundToInt()} Hz voice band")
+                    append(" • output ${(report.outputGain * 100).roundToInt()}%")
+                    append(" • ${report.listeningPath.label}")
+                    append(" • ${report.routedDeviceName}")
+                }
             )
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlinedButton(onClick = onPrivacyVolume, modifier = Modifier.weight(1f)) {
-                Text("Privacy Volume")
+            OutlinedButton(onClick = onSafeVolume, modifier = Modifier.weight(1f)) {
+                Text("Private Volume")
             }
             Button(onClick = onStop, enabled = state.isTransmitting || state.isBusy, modifier = Modifier.weight(1f)) {
                 Text("Stop")
@@ -243,7 +246,7 @@ private fun UltraCarrierScreen(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF101A2B)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF15182E)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -259,8 +262,8 @@ private fun UltraCarrierScreen(
         }
 
         Text(
-            "Phone Beam reduces audible leakage but cannot guarantee that nearby people hear nothing. A truly narrow audio beam requires a physically larger ultrasonic transducer array. Avoid maximum volume and never aim prolonged output directly into an ear.",
-            color = Color(0xFF7F92B5),
+            "Inner Voice is a psychoacoustic self-listening effect, strongest with headphones or bone conduction. Phone Speaker is fully supported, with Beam Whisper as its most directional profile. Patent SSB and FM Slope reproduce signal-processing ideas from US5159703A; a patent describes an invention and does not by itself establish every claimed biological effect. Keep volume comfortable and stop if you feel pressure, ringing, or discomfort.",
+            color = Color(0xFF87809E),
             style = MaterialTheme.typography.bodySmall
         )
     }
@@ -270,11 +273,11 @@ private fun UltraCarrierScreen(
 private fun InfoCard(title: String, body: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111827))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF12152A))
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
-            Text(body, color = Color(0xFF9DB0D0))
+            Text(body, color = Color(0xFFAFA6CB))
         }
     }
 }
@@ -283,7 +286,7 @@ private fun InfoCard(title: String, body: String) {
 private fun ControlCard(title: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF111827))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF12152A))
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
@@ -298,12 +301,12 @@ private fun WaveformCanvas(samples: FloatArray) {
         modifier = Modifier
             .fillMaxWidth()
             .height(150.dp)
-            .background(Color(0xFF070B14), RoundedCornerShape(12.dp))
+            .background(Color(0xFF070817), RoundedCornerShape(12.dp))
             .padding(8.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawLine(
-                color = Color(0xFF25324A),
+                color = Color(0xFF2D304B),
                 start = Offset(0f, size.height / 2f),
                 end = Offset(size.width, size.height / 2f),
                 strokeWidth = 1f
@@ -317,7 +320,7 @@ private fun WaveformCanvas(samples: FloatArray) {
                 }
                 drawPath(
                     path = path,
-                    color = Color(0xFF00E5FF),
+                    color = Color(0xFFC8A8FF),
                     style = Stroke(width = 2.5f, cap = StrokeCap.Round)
                 )
             }
