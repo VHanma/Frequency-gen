@@ -6,6 +6,7 @@ import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.SystemClock
 import kotlin.math.floor
 
 internal class TorchLoopEngine(
@@ -25,6 +26,7 @@ internal class TorchLoopEngine(
     @Volatile
     private var running = false
     private var startedAtNanos = 0L
+    private var startedAtUptimeMs = 0L
     private var tick = 0L
 
     init {
@@ -54,6 +56,7 @@ internal class TorchLoopEngine(
         handler = Handler(worker.looper)
         running = true
         startedAtNanos = System.nanoTime()
+        startedAtUptimeMs = SystemClock.uptimeMillis()
         tick = 0L
         onStatus(
             "Torch loop active at ${updateRateHz.coerceIn(1, 40)} updates/s with " +
@@ -98,7 +101,7 @@ internal class TorchLoopEngine(
             }
 
             tick++
-            val nextAt = startedAtNanos / 1_000_000L + tick * 1000L / rate.toLong()
+            val nextAt = startedAtUptimeMs + tick * 1000L / rate.toLong()
             handler.postAtTime(this, nextAt)
         }
     }
