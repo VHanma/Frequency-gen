@@ -33,13 +33,16 @@ data class AppUiState(
     val hardware: HardwareMode? = null,
     val carrierHz: Float = 18_000f,
     val depth: Float = 0.42f,
-    val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
+    val thoughtMode: ThoughtMode = ThoughtMode.FREY_ACOUSTIC_SIM,
     val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
     val steeringAngleDeg: Float = 0f,
     val transducerSpacingMm: Float = 8.5f,
     val chirpSweepHz: Float = 4_000f,
     val chirpPeriodMs: Float = 20f,
-    val status: String = "Prepare text or choose a file, then play through the phone or an external acoustic array.",
+    val clickRateHz: Float = 18f,
+    val clickWidthMs: Float = 1.2f,
+    val loopEnabled: Boolean = true,
+    val status: String = "Prepare text or choose a file. Loop is on, so playback continues until Stop.",
     val isBusy: Boolean = false,
     val isTransmitting: Boolean = false,
     val report: TransmissionReport? = null
@@ -54,6 +57,7 @@ class MainController(context: Context) : AutoCloseable {
     private val transmitter = AudioTransmitter()
     private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var transmitJob: Job? = null
+    private var sessionCounter = 0L
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -101,11 +105,33 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = _uiState.value.copy(chirpPeriodMs = value.coerceIn(2f, 250f))
     }
 
+    fun setClickRate(value: Float) {
+        _uiState.value = _uiState.value.copy(clickRateHz = value.coerceIn(2f, 40f))
+    }
+
+    fun setClickWidth(value: Float) {
+        _uiState.value = _uiState.value.copy(clickWidthMs = value.coerceIn(0.3f, 4f))
+    }
+
+    fun setLoopEnabled(enabled: Boolean) {
+        val state = _uiState.value
+        _uiState.value = state.copy(
+            loopEnabled = enabled,
+            status = when {
+                state.isTransmitting && enabled -> "Loop enabled. Playback repeats until Stop."
+                state.isTransmitting -> "Loop disabled. Playback stops after this pass."
+                enabled -> "Loop enabled. The prepared source repeats until Stop."
+                else -> "Loop disabled. The prepared source plays once."
+            }
+        )
+    }
+
     fun setThoughtMode(mode: ThoughtMode) {
         val old = _uiState.value
         val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
         val depth = when (mode) {
             ThoughtMode.INNER_VOICE -> 0.38f
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 0.42f
             ThoughtMode.PATENT_SSB -> 0.42f
             ThoughtMode.FM_SLOPE -> 0.35f
             ThoughtMode.BEAM_WHISPER -> 0.50f
@@ -154,7 +180,7 @@ class MainController(context: Context) : AutoCloseable {
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Ready: $name. Tap PLAY ACOUSTIC SIGNAL."
+                    status = "Ready: $name. Tap PLAY SIGNAL${if (_uiState.value.loopEnabled) "; it loops until Stop" else ""}."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -174,13 +200,13 @@ class MainController(context: Context) : AutoCloseable {
                 val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
                 val audio = withContext(Dispatchers.IO) { decoder.decodeFile(file) }
                 file.delete()
-                val name = "Acoustic voice: ${text.take(36)}"
+                val name = "Thought voice: ${text.take(36)}"
                 _waveform.value = preview(audio.samples)
                 _uiState.value = _uiState.value.copy(
                     loadedAudio = audio,
                     loadedName = name,
                     isBusy = false,
-                    status = "Speech ready. Tap PLAY ACOUSTIC SIGNAL."
+                    status = "Speech ready. Tap PLAY SIGNAL${if (_uiState.value.loopEnabled) "; it loops until Stop" else ""}."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -198,10 +224,14 @@ class MainController(context: Context) : AutoCloseable {
     }
 
     fun stopTransmission() {
+        sessionCounter++
         transmitter.stop()
-        transmitJob?.cancel()
         transmitJob = null
-        _uiState.value = _uiState.value.copy(isBusy = false, isTransmitting = false, status = "Playback stopped")
+        _uiState.value = _uiState.value.copy(
+            isBusy = false,
+            isTransmitting = false,
+            status = "Playback stopped"
+        )
     }
 
     fun setSafeVolume() {
@@ -231,8 +261,8 @@ class MainController(context: Context) : AutoCloseable {
         }
 
         transmitter.stop()
-        transmitJob?.cancel()
-        transmitJob = null
+        sessionCounter++
+        val sessionId = sessionCounter
         val sourceName = snapshot.loadedName ?: "selected audio"
         _uiState.value = snapshot.copy(
             isBusy = true,
@@ -242,35 +272,52 @@ class MainController(context: Context) : AutoCloseable {
         )
         transmitJob = scope.launch(Dispatchers.IO) {
             try {
-                transmitter.transmit(
-                    pcm = audio,
-                    requestedSampleRate = hardware.requestedSampleRate,
-                    requestedCarrierHz = snapshot.carrierHz,
-                    depth = snapshot.depth,
-                    thoughtMode = snapshot.thoughtMode,
-                    listeningPath = snapshot.listeningPath,
-                    steeringAngleDeg = snapshot.steeringAngleDeg,
-                    transducerSpacingMm = snapshot.transducerSpacingMm,
-                    chirpSweepHz = snapshot.chirpSweepHz,
-                    chirpPeriodMs = snapshot.chirpPeriodMs,
-                    preferredDevice = hardware.outputDevice,
-                    onStarted = { report ->
-                        _uiState.value = _uiState.value.copy(
-                            isBusy = false,
-                            isTransmitting = true,
-                            report = report,
-                            status = "${report.thoughtMode.label} playing through ${report.listeningPath.label}"
-                        )
-                    },
-                    onWaveform = { _waveform.value = it }
-                )
-                _uiState.value = _uiState.value.copy(
-                    isBusy = false,
-                    isTransmitting = false,
-                    status = "Finished playing $sourceName"
-                )
+                var pass = 0
+                do {
+                    pass++
+                    val current = _uiState.value
+                    transmitter.transmit(
+                        pcm = audio,
+                        requestedSampleRate = hardware.requestedSampleRate,
+                        requestedCarrierHz = current.carrierHz,
+                        depth = current.depth,
+                        thoughtMode = current.thoughtMode,
+                        listeningPath = current.listeningPath,
+                        steeringAngleDeg = current.steeringAngleDeg,
+                        transducerSpacingMm = current.transducerSpacingMm,
+                        chirpSweepHz = current.chirpSweepHz,
+                        chirpPeriodMs = current.chirpPeriodMs,
+                        clickRateHz = current.clickRateHz,
+                        clickWidthMs = current.clickWidthMs,
+                        preferredDevice = hardware.outputDevice,
+                        onStarted = { report ->
+                            if (sessionId == sessionCounter) {
+                                _uiState.value = _uiState.value.copy(
+                                    isBusy = false,
+                                    isTransmitting = true,
+                                    report = report,
+                                    status = if (_uiState.value.loopEnabled) {
+                                        "${report.thoughtMode.label} loop pass $pass through ${report.listeningPath.label}"
+                                    } else {
+                                        "${report.thoughtMode.label} playing through ${report.listeningPath.label}"
+                                    }
+                                )
+                            }
+                        },
+                        onWaveform = { if (sessionId == sessionCounter) _waveform.value = it }
+                    )
+                    if (sessionId != sessionCounter) return@launch
+                } while (_uiState.value.loopEnabled)
+
+                if (sessionId == sessionCounter) {
+                    _uiState.value = _uiState.value.copy(
+                        isBusy = false,
+                        isTransmitting = false,
+                        status = "Finished playing $sourceName"
+                    )
+                }
             } catch (error: Throwable) {
-                fail(error)
+                if (sessionId == sessionCounter) fail(error)
             }
         }
     }
@@ -279,7 +326,7 @@ class MainController(context: Context) : AutoCloseable {
         val min = hardware.carrierMinHz
         val max = hardware.carrierMaxHz
         return when (mode) {
-            ThoughtMode.INNER_VOICE -> 14_500f.coerceIn(min, max)
+            ThoughtMode.INNER_VOICE, ThoughtMode.FREY_ACOUSTIC_SIM -> 14_500f.coerceIn(min, max)
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(min, max)
             ThoughtMode.BEAM_WHISPER -> (max - 250f).coerceIn(min, max)
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> {
@@ -291,16 +338,16 @@ class MainController(context: Context) : AutoCloseable {
 
     private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
         ListeningPath.HEADPHONES -> if (hardware.external) {
-            "Headphone route detected. Inner Voice remains available unchanged."
+            "Headphone route detected. Inner Voice and Frey Acoustic Simulator are available."
         } else {
-            "Connect headphones for the centered listening profiles."
+            "Connect headphones for the strongest centered thought effect."
         }
         ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
             "External route detected. Select your bone-conduction headset in Android audio output."
         } else {
             "Connect a bone-conduction headset before playing."
         }
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Inner Voice and Beam Whisper work best on the phone itself. ${hardware.detail}"
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Inner Voice, Frey Acoustic Simulator, and Beam Whisper work on the phone itself. ${hardware.detail}"
         ListeningPath.EXTERNAL_ARRAY -> if (hardware.external) {
             "External route detected. Use a 96 or 192 kHz USB DAC and an ultrasonic transducer driver for Air Heterodyne or Array Steer."
         } else {
@@ -313,7 +360,9 @@ class MainController(context: Context) : AutoCloseable {
         if (samples.size <= target) return samples.copyOf()
         val output = FloatArray(target)
         val step = samples.size.toDouble() / target
-        for (i in output.indices) output[i] = samples[(i * step).toInt().coerceAtMost(samples.lastIndex)]
+        for (i in output.indices) {
+            output[i] = samples[(i * step).toInt().coerceAtMost(samples.lastIndex)]
+        }
         return output
     }
 
@@ -341,6 +390,7 @@ class MainController(context: Context) : AutoCloseable {
     }
 
     override fun close() {
+        sessionCounter++
         transmitter.stop()
         hardwareChecker.stop()
         tts.close()
