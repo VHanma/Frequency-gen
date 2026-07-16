@@ -53,18 +53,21 @@ class AudioTransmitter {
         val channels = if (stereo) 2 else 1
         activeTrack = track
 
-        val carrier = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) {
-            0f
-        } else {
-            DspMath.clampCarrier(sampleRate, requestedCarrierHz)
-        }
-        val maximumBandwidth = if (carrier > 0f) {
-            DspMath.safeMessageBandwidth(sampleRate, carrier)
-        } else {
-            4_000f
-        }
+        val directAudioMode = thoughtMode in setOf(
+            ThoughtMode.INNER_VOICE,
+            ThoughtMode.CENTER_LOCK,
+            ThoughtMode.FREY_ACOUSTIC_SIM,
+            ThoughtMode.MASKED_WHISPER,
+            ThoughtMode.BONE_TAP
+        )
+        val carrier = if (directAudioMode) 0f else DspMath.clampCarrier(sampleRate, requestedCarrierHz)
+        val maximumBandwidth = if (carrier > 0f) DspMath.safeMessageBandwidth(sampleRate, carrier) else 4_000f
         val bandwidth = when (thoughtMode) {
-            ThoughtMode.INNER_VOICE, ThoughtMode.FREY_ACOUSTIC_SIM -> 3_800f
+            ThoughtMode.INNER_VOICE -> 3_800f
+            ThoughtMode.CENTER_LOCK -> 3_200f
+            ThoughtMode.FREY_ACOUSTIC_SIM -> 3_800f
+            ThoughtMode.MASKED_WHISPER -> 3_300f
+            ThoughtMode.BONE_TAP -> 3_000f
             ThoughtMode.PATENT_SSB -> min(maximumBandwidth, 3_400f)
             ThoughtMode.FM_SLOPE -> min(maximumBandwidth, 3_200f)
             ThoughtMode.BEAM_WHISPER -> min(maximumBandwidth, 3_100f)
@@ -83,7 +86,7 @@ class AudioTransmitter {
         val sourceStep = pcm.sampleRate.toDouble() / sampleRate
         val totalOutputFrames = (pcm.samples.size / sourceStep).toLong().coerceAtLeast(1L)
         val constantPhaseStep = if (carrier > 0f) 2.0 * PI * carrier / sampleRate else 0.0
-        val fadeSeconds = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) 0.12 else 0.08
+        val fadeSeconds = if (directAudioMode) 0.12 else 0.08
         val fadeFrames = max(1, (sampleRate * fadeSeconds).toInt())
         val block = FloatArray(BLOCK_FRAMES * channels)
         val messageMonitor = FloatArray(BLOCK_FRAMES)
@@ -94,6 +97,8 @@ class AudioTransmitter {
         var phase = 0.0
         var waveformCounter = 0
         var gateEnvelope = 0f
+        var noiseState = 0x13579BDF
+        var noiseSmooth = 0f
         val effectiveDepth = depth.coerceIn(0.05f, 1f)
         val outputGain = outputGain(thoughtMode, listeningPath, effectiveDepth)
         val fmDeviation = 350f + 1_650f * effectiveDepth
@@ -118,6 +123,7 @@ class AudioTransmitter {
         val clickIntervalFrames = max(1, (sampleRate / safeClickRate).roundToInt())
         val clickWidthFrames = max(8, (sampleRate * safeClickWidth / 1000f).roundToInt())
         val clickToneHz = 1_200f + 1_200f * effectiveDepth
+        val boneTapHz = 170f + 90f * effectiveDepth
 
         try {
             track.play()
@@ -135,8 +141,8 @@ class AudioTransmitter {
                     outputGain = outputGain,
                     arrayPhaseDegrees = phaseDegrees,
                     chirpSweepHz = if (thoughtMode == ThoughtMode.CHIRP_CARRIER) chirpHigh - chirpLow else 0f,
-                    clickRateHz = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) safeClickRate else 0f,
-                    clickWidthMs = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) safeClickWidth else 0f
+                    clickRateHz = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM || thoughtMode == ThoughtMode.BONE_TAP) safeClickRate else 0f,
+                    clickWidthMs = if (thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM || thoughtMode == ThoughtMode.BONE_TAP) safeClickWidth else 0f
                 )
             )
 
@@ -145,7 +151,7 @@ class AudioTransmitter {
                 for (i in 0 until frames) {
                     val raw = DspMath.interpolate(pcm.samples, sourcePosition)
                     val bandLimited = highPass.process(lowPass.process(raw))
-                    val drive = if (thoughtMode == ThoughtMode.INNER_VOICE || thoughtMode == ThoughtMode.FREY_ACOUSTIC_SIM) 2.2f else 3.1f
+                    val drive = if (directAudioMode) 2.2f else 3.1f
                     val message = tanh((bandLimited * drive).toDouble()).toFloat().coerceIn(-1f, 1f)
                     val gateTarget = if (abs(message) > 0.006f) 1f else 0f
                     val gateSpeed = if (gateTarget > gateEnvelope) 0.035f else 0.004f
@@ -156,6 +162,14 @@ class AudioTransmitter {
                     val fadeOut = (totalOutputFrames - absoluteFrame).toFloat() / fadeFrames
                     val fade = min(1f, min(fadeIn, fadeOut)).coerceAtLeast(0f)
 
+                    val localFrame = (absoluteFrame % clickIntervalFrames).toInt()
+                    val packetWindow = if (localFrame < clickWidthFrames) {
+                        val position = localFrame.toFloat() / clickWidthFrames
+                        0.5f - 0.5f * cos((2.0 * PI * position).toFloat())
+                    } else {
+                        0f
+                    }
+
                     var leftEncoded: Float
                     var rightEncoded: Float
                     when (thoughtMode) {
@@ -164,22 +178,39 @@ class AudioTransmitter {
                             rightEncoded = message
                         }
 
+                        ThoughtMode.CENTER_LOCK -> {
+                            val center = tanh((message * (1.6f + effectiveDepth)).toDouble()).toFloat()
+                            leftEncoded = center
+                            rightEncoded = center
+                        }
+
                         ThoughtMode.FREY_ACOUSTIC_SIM -> {
-                            val localFrame = (absoluteFrame % clickIntervalFrames).toInt()
-                            val click = if (localFrame < clickWidthFrames) {
-                                val position = localFrame.toFloat() / clickWidthFrames
-                                val window = 0.5f - 0.5f * cos((2.0 * PI * position).toFloat())
-                                val tone = sin((2.0 * PI * clickToneHz * localFrame / sampleRate).toFloat())
-                                tone * window
-                            } else {
-                                0f
-                            }
+                            val click = sin((2.0 * PI * clickToneHz * localFrame / sampleRate).toFloat()) * packetWindow
                             val clickAmount = 0.10f + 0.30f * effectiveDepth
                             val sourceAmount = 0.82f - 0.18f * effectiveDepth
                             val speechEnergy = sqrt(abs(message) + 0.05f)
                             val simulated = message * sourceAmount + click * clickAmount * speechEnergy * gateEnvelope
                             leftEncoded = simulated
                             rightEncoded = simulated
+                        }
+
+                        ThoughtMode.MASKED_WHISPER -> {
+                            noiseState = noiseState * 1664525 + 1013904223
+                            val white = (((noiseState ushr 8) and 0x00FFFFFF) / 8_388_607.5f) - 1f
+                            noiseSmooth += (white - noiseSmooth) * 0.22f
+                            val shapedNoise = white - noiseSmooth
+                            val whisperLevel = 0.42f + 0.24f * effectiveDepth
+                            val maskLevel = 0.018f + 0.055f * effectiveDepth
+                            val whispered = message * whisperLevel + shapedNoise * maskLevel * (0.4f + 0.6f * gateEnvelope)
+                            leftEncoded = whispered
+                            rightEncoded = whispered
+                        }
+
+                        ThoughtMode.BONE_TAP -> {
+                            val tap = sin((2.0 * PI * boneTapHz * localFrame / sampleRate).toFloat()) * packetWindow
+                            val boneMix = message * (0.72f - 0.12f * effectiveDepth) + tap * (0.10f + 0.30f * effectiveDepth) * gateEnvelope
+                            leftEncoded = boneMix
+                            rightEncoded = boneMix
                         }
 
                         ThoughtMode.PATENT_SSB -> {
@@ -273,26 +304,38 @@ class AudioTransmitter {
     private fun outputGain(mode: ThoughtMode, path: ListeningPath, depth: Float): Float = when (path) {
         ListeningPath.HEADPHONES -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.035f + 0.18f * depth
+            ThoughtMode.CENTER_LOCK -> 0.03f + 0.16f * depth
             ThoughtMode.FREY_ACOUSTIC_SIM -> 0.045f + 0.19f * depth
+            ThoughtMode.MASKED_WHISPER -> 0.035f + 0.15f * depth
+            ThoughtMode.BONE_TAP -> 0.04f + 0.16f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.05f + 0.22f * depth
             ThoughtMode.BEAM_WHISPER -> 0.07f + 0.24f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.04f + 0.16f * depth
         }
         ListeningPath.BONE_CONDUCTION -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.06f + 0.27f * depth
+            ThoughtMode.CENTER_LOCK -> 0.05f + 0.23f * depth
             ThoughtMode.FREY_ACOUSTIC_SIM -> 0.055f + 0.24f * depth
+            ThoughtMode.MASKED_WHISPER -> 0.045f + 0.21f * depth
+            ThoughtMode.BONE_TAP -> 0.06f + 0.30f * depth
             else -> 0.08f + 0.28f * depth
         }
         ListeningPath.PHONE_SPEAKER -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.10f + 0.26f * depth
+            ThoughtMode.CENTER_LOCK -> 0.09f + 0.24f * depth
             ThoughtMode.FREY_ACOUSTIC_SIM -> 0.13f + 0.34f * depth
+            ThoughtMode.MASKED_WHISPER -> 0.11f + 0.28f * depth
+            ThoughtMode.BONE_TAP -> 0.12f + 0.30f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 0.12f + 0.30f * depth
             ThoughtMode.BEAM_WHISPER -> 0.15f + 0.34f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.10f + 0.24f * depth
         }
         ListeningPath.EXTERNAL_ARRAY -> when (mode) {
             ThoughtMode.INNER_VOICE -> 0.08f + 0.25f * depth
+            ThoughtMode.CENTER_LOCK -> 0.07f + 0.22f * depth
             ThoughtMode.FREY_ACOUSTIC_SIM -> 0.08f + 0.24f * depth
+            ThoughtMode.MASKED_WHISPER -> 0.07f + 0.21f * depth
+            ThoughtMode.BONE_TAP -> 0.08f + 0.23f * depth
             ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE, ThoughtMode.BEAM_WHISPER -> 0.12f + 0.32f * depth
             ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER -> 0.18f + 0.42f * depth
         }
