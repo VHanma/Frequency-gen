@@ -32,10 +32,10 @@ data class AppUiState(
     val loadedSource: PreparedAudioSource? = null,
     val hardware: HardwareMode? = null,
     val carrierHz: Float = 14_500f,
-    val depth: Float = 0.38f,
+    val depth: Float = 0.58f,
     val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
-    val listeningPath: ListeningPath = ListeningPath.HEADPHONES,
-    val status: String = "Choose a file of any practical size, or prepare text, then play it to yourself.",
+    val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
+    val status: String = "Phone Speaker is ready. Choose any-size audio or prepare text, then tap STREAM TO SELF.",
     val isBusy: Boolean = false,
     val isTransmitting: Boolean = false,
     val report: TransmissionReport? = null
@@ -60,10 +60,16 @@ class MainController(context: Context) : AutoCloseable {
     init {
         hardwareChecker.start { hardware ->
             val old = _uiState.value
+            val resolvedPath = if (!hardware.external && old.listeningPath != ListeningPath.PHONE_SPEAKER) {
+                ListeningPath.PHONE_SPEAKER
+            } else {
+                old.listeningPath
+            }
             _uiState.value = old.copy(
                 hardware = hardware,
+                listeningPath = resolvedPath,
                 carrierHz = profileCarrier(old.thoughtMode, hardware),
-                status = if (old.isTransmitting) old.status else routeStatus(old.listeningPath, hardware)
+                status = if (old.isTransmitting) old.status else routeStatus(resolvedPath, hardware)
             )
         }
     }
@@ -85,10 +91,10 @@ class MainController(context: Context) : AutoCloseable {
         val old = _uiState.value
         val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
         val depth = when (mode) {
-            ThoughtMode.INNER_VOICE -> 0.38f
-            ThoughtMode.PATENT_SSB -> 0.42f
-            ThoughtMode.FM_SLOPE -> 0.35f
-            ThoughtMode.BEAM_WHISPER -> 0.50f
+            ThoughtMode.INNER_VOICE -> if (old.listeningPath == ListeningPath.PHONE_SPEAKER) 0.58f else 0.38f
+            ThoughtMode.PATENT_SSB -> 0.48f
+            ThoughtMode.FM_SLOPE -> 0.42f
+            ThoughtMode.BEAM_WHISPER -> 0.58f
         }
         _uiState.value = old.copy(
             thoughtMode = mode,
@@ -100,15 +106,21 @@ class MainController(context: Context) : AutoCloseable {
 
     fun setListeningPath(path: ListeningPath) {
         val old = _uiState.value
-        val depth = when (path) {
+        val hardware = old.hardware
+        val resolved = if (path != ListeningPath.PHONE_SPEAKER && hardware?.external != true) {
+            ListeningPath.PHONE_SPEAKER
+        } else {
+            path
+        }
+        val depth = when (resolved) {
             ListeningPath.HEADPHONES -> 0.38f
             ListeningPath.BONE_CONDUCTION -> 0.32f
-            ListeningPath.PHONE_SPEAKER -> 0.50f
+            ListeningPath.PHONE_SPEAKER -> 0.58f
         }
         _uiState.value = old.copy(
-            listeningPath = path,
+            listeningPath = resolved,
             depth = depth,
-            status = old.hardware?.let { routeStatus(path, it) } ?: path.description
+            status = hardware?.let { routeStatus(resolved, it) } ?: resolved.description
         )
     }
 
@@ -130,7 +142,7 @@ class MainController(context: Context) : AutoCloseable {
                     loadedSource = PreparedAudioSource.StreamFile(uri, info),
                     loadedName = name,
                     isBusy = false,
-                    status = "Ready: $name • $duration • ${info.formatLabel}. It will stream without loading the whole file."
+                    status = "Ready: $name • $duration • ${info.formatLabel}. Tap STREAM TO SELF."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -156,7 +168,7 @@ class MainController(context: Context) : AutoCloseable {
                     loadedSource = PreparedAudioSource.Memory(audio),
                     loadedName = name,
                     isBusy = false,
-                    status = "Speech ready. Start low, then tap PLAY TO SELF."
+                    status = "Speech ready. Tap STREAM TO SELF."
                 )
             } catch (error: Throwable) {
                 fail(error)
@@ -184,13 +196,13 @@ class MainController(context: Context) : AutoCloseable {
         val state = _uiState.value
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val fraction = when (state.listeningPath) {
-            ListeningPath.HEADPHONES -> 0.25f
-            ListeningPath.BONE_CONDUCTION -> 0.20f
-            ListeningPath.PHONE_SPEAKER -> 0.52f
+            ListeningPath.HEADPHONES -> 0.28f
+            ListeningPath.BONE_CONDUCTION -> 0.22f
+            ListeningPath.PHONE_SPEAKER -> 0.62f
         }
         val target = (max * fraction).roundToInt().coerceIn(1, max)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-        _uiState.value = state.copy(status = "Private listening volume set to ${(fraction * 100).roundToInt()}%.")
+        _uiState.value = state.copy(status = "Playback volume set to ${(fraction * 100).roundToInt()}%.")
     }
 
     private fun startTransmission(source: PreparedAudioSource) {
@@ -200,9 +212,11 @@ class MainController(context: Context) : AutoCloseable {
             _uiState.value = snapshot.copy(status = "Audio hardware is still initializing.")
             return
         }
-        if (snapshot.listeningPath != ListeningPath.PHONE_SPEAKER && !hardware.external) {
-            _uiState.value = snapshot.copy(status = "Connect headphones or a bone-conduction headset, then try again.")
-            return
+
+        val resolvedPath = if (snapshot.listeningPath != ListeningPath.PHONE_SPEAKER && !hardware.external) {
+            ListeningPath.PHONE_SPEAKER
+        } else {
+            snapshot.listeningPath
         }
 
         transmitter.stop()
@@ -210,10 +224,11 @@ class MainController(context: Context) : AutoCloseable {
         transmitJob = null
         val sourceName = snapshot.loadedName ?: "selected audio"
         _uiState.value = snapshot.copy(
+            listeningPath = resolvedPath,
             isBusy = true,
             isTransmitting = true,
             report = null,
-            status = "Streaming ${snapshot.thoughtMode.label}: $sourceName…"
+            status = "Opening ${resolvedPath.label} and streaming $sourceName…"
         )
         transmitJob = scope.launch(Dispatchers.IO) {
             try {
@@ -224,14 +239,14 @@ class MainController(context: Context) : AutoCloseable {
                     requestedCarrierHz = snapshot.carrierHz,
                     depth = snapshot.depth,
                     thoughtMode = snapshot.thoughtMode,
-                    listeningPath = snapshot.listeningPath,
-                    preferredDevice = hardware.outputDevice,
+                    listeningPath = resolvedPath,
+                    preferredDevice = if (resolvedPath == ListeningPath.PHONE_SPEAKER) hardware.outputDevice else hardware.outputDevice,
                     onStarted = { report ->
                         _uiState.value = _uiState.value.copy(
                             isBusy = false,
                             isTransmitting = true,
                             report = report,
-                            status = "${report.thoughtMode.label} streaming through ${report.listeningPath.label}"
+                            status = "${report.thoughtMode.label} is playing through ${report.listeningPath.label}"
                         )
                     },
                     onWaveform = { _waveform.value = it }
@@ -257,16 +272,16 @@ class MainController(context: Context) : AutoCloseable {
         ListeningPath.HEADPHONES -> if (hardware.external) {
             "Headphone route detected. Unlimited files stream in small chunks instead of filling memory."
         } else {
-            "Connect headphones for the strongest inside-the-head effect."
+            "No headset detected, so Phone Speaker was selected automatically."
         }
 
         ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
             "External route detected. Select your bone-conduction headset in Android audio output."
         } else {
-            "Connect a bone-conduction headset before playing."
+            "No headset detected, so Phone Speaker was selected automatically."
         }
 
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker selected. Beam Whisper is the most directional profile. ${hardware.detail}"
+        ListeningPath.PHONE_SPEAKER -> "Phone Speaker ready. ${hardware.detail}"
     }
 
     private fun formatDuration(seconds: Double): String {
@@ -294,7 +309,7 @@ class MainController(context: Context) : AutoCloseable {
         _uiState.value = _uiState.value.copy(
             isBusy = false,
             isTransmitting = false,
-            status = "Could not use that source: ${error.message ?: error::class.java.simpleName}"
+            status = "Could not play that source: ${error.message ?: error::class.java.simpleName}"
         )
     }
 
