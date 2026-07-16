@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.beam"
+        applicationId = "com.vaan.ultracarrier.innervoice"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "3.0.0-beam"
+        versionCode = 4
+        versionName = "4.0.0-innervoice"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
