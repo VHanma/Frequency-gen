@@ -89,12 +89,12 @@ class MainActivity : ComponentActivity() {
 private fun InnerVoiceTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Color(0xFFC8A8FF),
+            primary = Color(0xFFFFC857),
             secondary = Color(0xFF65E9FF),
             background = Color(0xFF050713),
             surface = Color(0xFF12152A),
-            onBackground = Color(0xFFF2ECFF),
-            onSurface = Color(0xFFF2ECFF)
+            onBackground = Color(0xFFFFF4D6),
+            onSurface = Color(0xFFFFF4D6)
         ),
         content = content
     )
@@ -131,10 +131,10 @@ private fun InnerVoiceScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("ULTRACARRIER INNERVOICE", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("INNERVOICE UNLIMITED", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "A separate self-listening clone for centered, thought-like speech and patent-inspired signal experiments.",
-            color = Color(0xFFAFA6CB)
+            "The same InnerVoice engines with true chunked playback for very large audio files.",
+            color = Color(0xFFC9BFA4)
         )
 
         InfoCard(
@@ -150,7 +150,7 @@ private fun InnerVoiceScreen(
                     label = { Text(path.label) }
                 )
             }
-            Text(state.listeningPath.description, color = Color(0xFFAFA6CB))
+            Text(state.listeningPath.description, color = Color(0xFFC9BFA4))
         }
 
         ControlCard(title = "Perception engine") {
@@ -161,7 +161,7 @@ private fun InnerVoiceScreen(
                     label = { Text(mode.label) }
                 )
             }
-            Text(state.thoughtMode.description, color = Color(0xFFAFA6CB))
+            Text(state.thoughtMode.description, color = Color(0xFFC9BFA4))
         }
 
         OutlinedTextField(
@@ -177,29 +177,34 @@ private fun InnerVoiceScreen(
                 Text("Prepare Text")
             }
             OutlinedButton(onClick = onPickFile, enabled = !state.isBusy, modifier = Modifier.weight(1f)) {
-                Text("Choose File")
+                Text("Choose Any-Size File")
             }
         }
 
         Text(
+            "Uploaded files are decoded while they play. The app does not copy the whole song, audiobook, or archive into memory.",
+            color = Color(0xFFC9BFA4)
+        )
+
+        Text(
             state.loadedName?.let { "Ready source: $it" } ?: "Ready source: none",
-            color = Color(0xFFC9C1E2)
+            color = Color(0xFFE5D9B8)
         )
 
         Button(
             onClick = onTransmit,
-            enabled = state.loadedAudio != null && !state.isBusy,
+            enabled = state.loadedSource != null && !state.isBusy,
             modifier = Modifier.fillMaxWidth().height(58.dp)
         ) {
-            Text("PLAY TO SELF", fontWeight = FontWeight.Black)
+            Text("STREAM TO SELF", fontWeight = FontWeight.Black)
         }
 
         ControlCard(title = "Presence") {
             Text("${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
             Slider(value = state.depth, onValueChange = onDepthChanged, valueRange = 0.05f..1f)
             Text(
-                "Lower settings feel more distant and blend into attention. Raise slowly until the voice feels centered but comfortable.",
-                color = Color(0xFFAFA6CB)
+                "Lower settings feel more distant and blend into attention. Raise slowly until comfortable.",
+                color = Color(0xFFC9BFA4)
             )
         }
 
@@ -213,12 +218,12 @@ private fun InnerVoiceScreen(
                 )
                 Text(
                     "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available sideband width ${predictedBandwidth.roundToInt()} Hz.",
-                    color = Color(0xFFAFA6CB)
+                    color = Color(0xFFC9BFA4)
                 )
             }
         }
 
-        ControlCard(title = "Voice waveform") {
+        ControlCard(title = "Live voice waveform") {
             WaveformCanvas(waveform)
         }
 
@@ -262,8 +267,8 @@ private fun InnerVoiceScreen(
         }
 
         Text(
-            "Inner Voice is a psychoacoustic self-listening effect, strongest with headphones or bone conduction. Phone Speaker is fully supported, with Beam Whisper as its most directional profile. Patent SSB and FM Slope reproduce signal-processing ideas from US5159703A; a patent describes an invention and does not by itself establish every claimed biological effect. Keep volume comfortable and stop if you feel pressure, ringing, or discomfort.",
-            color = Color(0xFF87809E),
+            "There is no app-set file-size or duration cap. The practical limit is the file provider, supported audio format, available storage, battery, and how long Android keeps the app active. WAV and RF64 WAV stream directly; Android handles supported MP3, M4A, OGG, and FLAC files. Keep volume comfortable and stop if you feel pressure, ringing, or discomfort.",
+            color = Color(0xFF918970),
             style = MaterialTheme.typography.bodySmall
         )
     }
@@ -277,7 +282,7 @@ private fun InfoCard(title: String, body: String) {
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
-            Text(body, color = Color(0xFFAFA6CB))
+            Text(body, color = Color(0xFFC9BFA4))
         }
     }
 }
@@ -320,7 +325,7 @@ private fun WaveformCanvas(samples: FloatArray) {
                 }
                 drawPath(
                     path = path,
-                    color = Color(0xFFC8A8FF),
+                    color = Color(0xFFFFC857),
                     style = Stroke(width = 2.5f, cap = StrokeCap.Round)
                 )
             }
