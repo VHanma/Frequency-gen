@@ -11,8 +11,8 @@ android {
         applicationId = "com.vaan.ultracarrier.innervoice.unlimited"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "5.0.0-unlimited"
+        versionCode = 6
+        versionName = "5.1.0-unlimited-playback-fix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
