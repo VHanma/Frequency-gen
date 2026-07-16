@@ -46,7 +46,9 @@ import androidx.compose.ui.unit.dp
 import com.vaan.ultracarrier.audio.DspMath
 import com.vaan.ultracarrier.audio.ListeningPath
 import com.vaan.ultracarrier.audio.ThoughtMode
+import kotlin.math.PI
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
     private lateinit var controller: MainController
@@ -57,11 +59,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by controller.uiState.collectAsState()
             val waveform by controller.waveform.collectAsState()
-            InnerVoiceTheme {
+            AcousticArrayTheme {
                 val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                     uri?.let(controller::loadFile)
                 }
-                InnerVoiceScreen(
+                AcousticArrayScreen(
                     state = state,
                     waveform = waveform,
                     onTextChanged = controller::setText,
@@ -70,6 +72,10 @@ class MainActivity : ComponentActivity() {
                     onDepthChanged = controller::setDepth,
                     onThoughtModeChanged = controller::setThoughtMode,
                     onListeningPathChanged = controller::setListeningPath,
+                    onSteeringAngleChanged = controller::setSteeringAngle,
+                    onTransducerSpacingChanged = controller::setTransducerSpacing,
+                    onChirpSweepChanged = controller::setChirpSweep,
+                    onChirpPeriodChanged = controller::setChirpPeriod,
                     onPrepareText = controller::synthesizeAndPrepare,
                     onTransmit = controller::transmitLoaded,
                     onStop = controller::stopTransmission,
@@ -86,22 +92,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun InnerVoiceTheme(content: @Composable () -> Unit) {
+private fun AcousticArrayTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = darkColorScheme(
-            primary = Color(0xFFC8A8FF),
-            secondary = Color(0xFF65E9FF),
-            background = Color(0xFF050713),
-            surface = Color(0xFF12152A),
-            onBackground = Color(0xFFF2ECFF),
-            onSurface = Color(0xFFF2ECFF)
+            primary = Color(0xFF66F0D2),
+            secondary = Color(0xFFFFC86B),
+            background = Color(0xFF06100F),
+            surface = Color(0xFF10201E),
+            onBackground = Color(0xFFECFFF9),
+            onSurface = Color(0xFFECFFF9)
         ),
         content = content
     )
 }
 
 @Composable
-private fun InnerVoiceScreen(
+private fun AcousticArrayScreen(
     state: AppUiState,
     waveform: FloatArray,
     onTextChanged: (String) -> Unit,
@@ -110,6 +116,10 @@ private fun InnerVoiceScreen(
     onDepthChanged: (Float) -> Unit,
     onThoughtModeChanged: (ThoughtMode) -> Unit,
     onListeningPathChanged: (ListeningPath) -> Unit,
+    onSteeringAngleChanged: (Float) -> Unit,
+    onTransducerSpacingChanged: (Float) -> Unit,
+    onChirpSweepChanged: (Float) -> Unit,
+    onChirpPeriodChanged: (Float) -> Unit,
     onPrepareText: () -> Unit,
     onTransmit: () -> Unit,
     onStop: () -> Unit,
@@ -122,6 +132,9 @@ private fun InnerVoiceScreen(
         hardware?.requestedSampleRate ?: 48_000,
         state.carrierHz
     )
+    val rawPhaseDegrees = 360.0 * state.carrierHz * (state.transducerSpacingMm / 1000.0) *
+        sin(state.steeringAngleDeg * PI / 180.0) / 343.0
+    val normalizedPhaseDegrees = (((rawPhaseDegrees + 180.0) % 360.0 + 360.0) % 360.0 - 180.0)
 
     Column(
         modifier = Modifier
@@ -131,18 +144,18 @@ private fun InnerVoiceScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("ULTRACARRIER INNERVOICE", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("ULTRACARRIER ACOUSTIC ARRAY", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
         Text(
-            "A separate self-listening clone for centered, thought-like speech and patent-inspired signal experiments.",
-            color = Color(0xFFAFA6CB)
+            "A clean clone of the working InnerVoice app, expanded with acoustic heterodyning, stereo phase steering, and chirped carriers.",
+            color = Color(0xFFA8C8BF)
         )
 
         InfoCard(
             title = hardware?.label ?: "Detecting audio route…",
-            body = hardware?.detail ?: "Checking the active speaker or headset."
+            body = hardware?.detail ?: "Checking the phone speaker, DAC, or external array."
         )
 
-        ControlCard(title = "Listening path") {
+        ControlCard(title = "Output path") {
             ListeningPath.entries.forEach { path ->
                 FilterChip(
                     selected = state.listeningPath == path,
@@ -150,10 +163,10 @@ private fun InnerVoiceScreen(
                     label = { Text(path.label) }
                 )
             }
-            Text(state.listeningPath.description, color = Color(0xFFAFA6CB))
+            Text(state.listeningPath.description, color = Color(0xFFA8C8BF))
         }
 
-        ControlCard(title = "Perception engine") {
+        ControlCard(title = "Acoustic engine") {
             ThoughtMode.entries.forEach { mode ->
                 FilterChip(
                     selected = state.thoughtMode == mode,
@@ -161,14 +174,14 @@ private fun InnerVoiceScreen(
                     label = { Text(mode.label) }
                 )
             }
-            Text(state.thoughtMode.description, color = Color(0xFFAFA6CB))
+            Text(state.thoughtMode.description, color = Color(0xFFA8C8BF))
         }
 
         OutlinedTextField(
             value = state.text,
             onValueChange = onTextChanged,
             modifier = Modifier.fillMaxWidth().height(140.dp),
-            label = { Text("Text for your private voice") },
+            label = { Text("Text to encode") },
             placeholder = { Text("Type a phrase, reflection, or affirmation…") }
         )
 
@@ -183,7 +196,7 @@ private fun InnerVoiceScreen(
 
         Text(
             state.loadedName?.let { "Ready source: $it" } ?: "Ready source: none",
-            color = Color(0xFFC9C1E2)
+            color = Color(0xFFCFE8E0)
         )
 
         Button(
@@ -191,20 +204,20 @@ private fun InnerVoiceScreen(
             enabled = state.loadedAudio != null && !state.isBusy,
             modifier = Modifier.fillMaxWidth().height(58.dp)
         ) {
-            Text("PLAY TO SELF", fontWeight = FontWeight.Black)
+            Text("PLAY ACOUSTIC SIGNAL", fontWeight = FontWeight.Black)
         }
 
-        ControlCard(title = "Presence") {
+        ControlCard(title = "Modulation depth") {
             Text("${(state.depth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
             Slider(value = state.depth, onValueChange = onDepthChanged, valueRange = 0.05f..1f)
             Text(
-                "Lower settings feel more distant and blend into attention. Raise slowly until the voice feels centered but comfortable.",
-                color = Color(0xFFAFA6CB)
+                "Raise gradually. External ultrasonic arrays can behave very differently from a phone speaker.",
+                color = Color(0xFFA8C8BF)
             )
         }
 
         if (state.thoughtMode != ThoughtMode.INNER_VOICE) {
-            ControlCard(title = "Experimental carrier") {
+            ControlCard(title = "Acoustic carrier") {
                 Text("${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
                 Slider(
                     value = state.carrierHz.coerceIn(minCarrier, maxCarrier),
@@ -212,13 +225,69 @@ private fun InnerVoiceScreen(
                     valueRange = minCarrier..maxCarrier
                 )
                 Text(
-                    "Range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available sideband width ${predictedBandwidth.roundToInt()} Hz.",
-                    color = Color(0xFFAFA6CB)
+                    "Route range ${minCarrier.roundToInt()}–${maxCarrier.roundToInt()} Hz. Available message sideband ${predictedBandwidth.roundToInt()} Hz.",
+                    color = Color(0xFFA8C8BF)
                 )
             }
         }
 
-        ControlCard(title = "Voice waveform") {
+        if (state.thoughtMode == ThoughtMode.ARRAY_STEER) {
+            ControlCard(title = "Stereo array steering") {
+                Text("Aim angle ${state.steeringAngleDeg.roundToInt()}°", fontWeight = FontWeight.Bold)
+                Slider(
+                    value = state.steeringAngleDeg,
+                    onValueChange = onSteeringAngleChanged,
+                    valueRange = -60f..60f
+                )
+                Text("Transducer spacing ${"%.1f".format(state.transducerSpacingMm)} mm", fontWeight = FontWeight.Bold)
+                Slider(
+                    value = state.transducerSpacingMm,
+                    onValueChange = onTransducerSpacingChanged,
+                    valueRange = 1f..50f
+                )
+                Text(
+                    "Δφ = 2π f d sin(θ) / c = ${"%.1f".format(normalizedPhaseDegrees)}°. Left and right channels receive this relative carrier phase.",
+                    color = Color(0xFFA8C8BF)
+                )
+                Text(
+                    "For cleaner steering, element spacing near or below half a wavelength reduces unwanted side beams.",
+                    color = Color(0xFFA8C8BF)
+                )
+            }
+        }
+
+        if (state.thoughtMode == ThoughtMode.CHIRP_CARRIER) {
+            ControlCard(title = "Chirp carrier") {
+                Text("Sweep ${state.chirpSweepHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
+                Slider(
+                    value = state.chirpSweepHz,
+                    onValueChange = onChirpSweepChanged,
+                    valueRange = 100f..12_000f
+                )
+                Text("Period ${state.chirpPeriodMs.roundToInt()} ms", fontWeight = FontWeight.Bold)
+                Slider(
+                    value = state.chirpPeriodMs,
+                    onValueChange = onChirpPeriodChanged,
+                    valueRange = 2f..250f
+                )
+                Text(
+                    "This sweeps the acoustic carrier around the selected center frequency. It is not a microwave pulse and does not target tissue.",
+                    color = Color(0xFFA8C8BF)
+                )
+            }
+        }
+
+        if (state.thoughtMode == ThoughtMode.AIR_HETERODYNE ||
+            state.thoughtMode == ThoughtMode.ARRAY_STEER ||
+            state.thoughtMode == ThoughtMode.CHIRP_CARRIER
+        ) {
+            InfoCard(
+                title = "External array recommended",
+                body = "A phone speaker cannot create a true 40 kHz parametric beam. Use External Ultrasonic Array with a 96/192 kHz USB DAC, suitable amplifier, and ultrasonic transducers. The app outputs an acoustic waveform only."
+            )
+        }
+
+        ControlCard(title = "Source waveform") {
             WaveformCanvas(waveform)
         }
 
@@ -228,8 +297,14 @@ private fun InnerVoiceScreen(
                 body = buildString {
                     append("${report.actualSampleRate} Hz PCM float")
                     if (report.actualCarrierHz > 0f) append(" • ${report.actualCarrierHz.roundToInt()} Hz carrier")
-                    append(" • ${report.messageBandwidthHz.roundToInt()} Hz voice band")
+                    append(" • ${report.messageBandwidthHz.roundToInt()} Hz message band")
                     append(" • output ${(report.outputGain * 100).roundToInt()}%")
+                    if (report.thoughtMode == ThoughtMode.ARRAY_STEER) {
+                        append(" • phase ${"%.1f".format(report.arrayPhaseDegrees)}°")
+                    }
+                    if (report.thoughtMode == ThoughtMode.CHIRP_CARRIER) {
+                        append(" • sweep ${report.chirpSweepHz.roundToInt()} Hz")
+                    }
                     append(" • ${report.listeningPath.label}")
                     append(" • ${report.routedDeviceName}")
                 }
@@ -238,7 +313,7 @@ private fun InnerVoiceScreen(
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = onSafeVolume, modifier = Modifier.weight(1f)) {
-                Text("Private Volume")
+                Text("Safe Volume")
             }
             Button(onClick = onStop, enabled = state.isTransmitting || state.isBusy, modifier = Modifier.weight(1f)) {
                 Text("Stop")
@@ -246,7 +321,7 @@ private fun InnerVoiceScreen(
         }
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF15182E)),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF132824)),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -262,8 +337,8 @@ private fun InnerVoiceScreen(
         }
 
         Text(
-            "Inner Voice is a psychoacoustic self-listening effect, strongest with headphones or bone conduction. Phone Speaker is fully supported, with Beam Whisper as its most directional profile. Patent SSB and FM Slope reproduce signal-processing ideas from US5159703A; a patent describes an invention and does not by itself establish every claimed biological effect. Keep volume comfortable and stop if you feel pressure, ringing, or discomfort.",
-            color = Color(0xFF87809E),
+            "This clone intentionally excludes microwave transmission, GHz carriers, tissue-heating equations, and Frey-effect pulse parameters. It only generates ordinary audio-frequency and ultrasonic electrical waveforms through Android's audio output. Keep ultrasonic hardware away from ears, use measured output levels, and stop if you notice discomfort or ringing.",
+            color = Color(0xFF829F97),
             style = MaterialTheme.typography.bodySmall
         )
     }
@@ -273,11 +348,11 @@ private fun InnerVoiceScreen(
 private fun InfoCard(title: String, body: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12152A))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10201E))
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
-            Text(body, color = Color(0xFFAFA6CB))
+            Text(body, color = Color(0xFFA8C8BF))
         }
     }
 }
@@ -286,7 +361,7 @@ private fun InfoCard(title: String, body: String) {
 private fun ControlCard(title: String, content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF12152A))
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF10201E))
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text(title, fontWeight = FontWeight.Bold)
@@ -301,12 +376,12 @@ private fun WaveformCanvas(samples: FloatArray) {
         modifier = Modifier
             .fillMaxWidth()
             .height(150.dp)
-            .background(Color(0xFF070817), RoundedCornerShape(12.dp))
+            .background(Color(0xFF07110F), RoundedCornerShape(12.dp))
             .padding(8.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawLine(
-                color = Color(0xFF2D304B),
+                color = Color(0xFF29403B),
                 start = Offset(0f, size.height / 2f),
                 end = Offset(size.width, size.height / 2f),
                 strokeWidth = 1f
@@ -320,7 +395,7 @@ private fun WaveformCanvas(samples: FloatArray) {
                 }
                 drawPath(
                     path = path,
-                    color = Color(0xFFC8A8FF),
+                    color = Color(0xFF66F0D2),
                     style = Stroke(width = 2.5f, cap = StrokeCap.Round)
                 )
             }
