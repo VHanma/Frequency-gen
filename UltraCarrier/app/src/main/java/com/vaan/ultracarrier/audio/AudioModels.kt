@@ -1,6 +1,7 @@
 package com.vaan.ultracarrier.audio
 
 import android.media.AudioDeviceInfo
+import android.net.Uri
 
 data class PcmAudio(
     val samples: FloatArray,
@@ -8,10 +9,22 @@ data class PcmAudio(
     val durationSeconds: Double
 )
 
+data class AudioStreamInfo(
+    val sampleRate: Int,
+    val channels: Int,
+    val durationSeconds: Double?,
+    val formatLabel: String
+)
+
+sealed interface PreparedAudioSource {
+    data class Memory(val pcm: PcmAudio) : PreparedAudioSource
+    data class StreamFile(val uri: Uri, val info: AudioStreamInfo) : PreparedAudioSource
+}
+
 enum class ThoughtMode(val label: String, val description: String) {
     INNER_VOICE(
         "Inner Voice",
-        "Centered, narrow-band speech for headphones or bone conduction. This is the most convincing thought-like mode."
+        "Centered, narrow-band speech for headphones, bone conduction, or the phone speaker."
     ),
     PATENT_SSB(
         "Patent SSB",
@@ -38,7 +51,7 @@ enum class ListeningPath(val label: String, val description: String) {
     ),
     PHONE_SPEAKER(
         "Phone Speaker",
-        "Uses the phone speaker. Beam Whisper works best here; Inner Voice is less internal without headphones."
+        "Full speaker support. Beam Whisper is the most directional profile."
     )
 }
 
