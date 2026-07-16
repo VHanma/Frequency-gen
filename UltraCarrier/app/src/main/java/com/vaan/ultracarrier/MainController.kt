@@ -1,0 +1,333 @@
+package com.vaan.ultracarrier
+
+import android.content.Context
+import android.database.Cursor
+import android.media.AudioManager
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.vaan.ultracarrier.audio.AudioFileDecoder
+import com.vaan.ultracarrier.audio.AudioHardwareChecker
+import com.vaan.ultracarrier.audio.AudioTransmitter
+import com.vaan.ultracarrier.audio.HardwareMode
+import com.vaan.ultracarrier.audio.ListeningPath
+import com.vaan.ultracarrier.audio.PreparedAudioSource
+import com.vaan.ultracarrier.audio.ThoughtMode
+import com.vaan.ultracarrier.audio.TransmissionReport
+import com.vaan.ultracarrier.audio.TtsSynthesizer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+data class AppUiState(
+    val text: String = "",
+    val loadedName: String? = null,
+    val loadedSource: PreparedAudioSource? = null,
+    val hardware: HardwareMode? = null,
+    val carrierHz: Float = 14_500f,
+    val depth: Float = 0.58f,
+    val thoughtMode: ThoughtMode = ThoughtMode.INNER_VOICE,
+    val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
+    val status: String = "Phone Speaker is ready. Choose any-size audio or prepare text, then tap STREAM TO SELF.",
+    val isBusy: Boolean = false,
+    val isTransmitting: Boolean = false,
+    val report: TransmissionReport? = null
+)
+
+class MainController(context: Context) : AutoCloseable {
+    private val appContext = context.applicationContext
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val decoder = AudioFileDecoder(appContext.contentResolver)
+    private val tts = TtsSynthesizer(appContext)
+    private val hardwareChecker = AudioHardwareChecker(appContext)
+    private val transmitter = AudioTransmitter()
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var transmitJob: Job? = null
+
+    private val _uiState = MutableStateFlow(AppUiState())
+    val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
+
+    private val _waveform = MutableStateFlow(FloatArray(0))
+    val waveform: StateFlow<FloatArray> = _waveform.asStateFlow()
+
+    init {
+        hardwareChecker.start { hardware ->
+            val old = _uiState.value
+            val resolvedPath = if (!hardware.external && old.listeningPath != ListeningPath.PHONE_SPEAKER) {
+                ListeningPath.PHONE_SPEAKER
+            } else {
+                old.listeningPath
+            }
+            _uiState.value = old.copy(
+                hardware = hardware,
+                listeningPath = resolvedPath,
+                carrierHz = profileCarrier(old.thoughtMode, hardware),
+                status = if (old.isTransmitting) old.status else routeStatus(resolvedPath, hardware)
+            )
+        }
+    }
+
+    fun setText(value: String) {
+        _uiState.value = _uiState.value.copy(text = value)
+    }
+
+    fun setCarrier(value: Float) {
+        val hardware = _uiState.value.hardware ?: return
+        _uiState.value = _uiState.value.copy(carrierHz = value.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz))
+    }
+
+    fun setDepth(value: Float) {
+        _uiState.value = _uiState.value.copy(depth = value.coerceIn(0.05f, 1f))
+    }
+
+    fun setThoughtMode(mode: ThoughtMode) {
+        val old = _uiState.value
+        val carrier = old.hardware?.let { profileCarrier(mode, it) } ?: old.carrierHz
+        val depth = when (mode) {
+            ThoughtMode.INNER_VOICE -> if (old.listeningPath == ListeningPath.PHONE_SPEAKER) 0.58f else 0.38f
+            ThoughtMode.PATENT_SSB -> 0.48f
+            ThoughtMode.FM_SLOPE -> 0.42f
+            ThoughtMode.BEAM_WHISPER -> 0.58f
+        }
+        _uiState.value = old.copy(
+            thoughtMode = mode,
+            carrierHz = carrier,
+            depth = depth,
+            status = mode.description
+        )
+    }
+
+    fun setListeningPath(path: ListeningPath) {
+        val old = _uiState.value
+        val hardware = old.hardware
+        val resolved = if (path != ListeningPath.PHONE_SPEAKER && hardware?.external != true) {
+            ListeningPath.PHONE_SPEAKER
+        } else {
+            path
+        }
+        val depth = when (resolved) {
+            ListeningPath.HEADPHONES -> 0.38f
+            ListeningPath.BONE_CONDUCTION -> 0.32f
+            ListeningPath.PHONE_SPEAKER -> 0.58f
+        }
+        _uiState.value = old.copy(
+            listeningPath = resolved,
+            depth = depth,
+            status = hardware?.let { routeStatus(resolved, it) } ?: resolved.description
+        )
+    }
+
+    fun loadFile(uri: Uri) {
+        scope.launch {
+            setBusy("Reading file information…")
+            try {
+                runCatching {
+                    appContext.contentResolver.takePersistableUriPermission(
+                        uri,
+                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
+                val info = withContext(Dispatchers.IO) { decoder.inspectUri(uri) }
+                val name = queryName(uri)
+                val duration = info.durationSeconds?.let(::formatDuration) ?: "unknown length"
+                _waveform.value = FloatArray(0)
+                _uiState.value = _uiState.value.copy(
+                    loadedSource = PreparedAudioSource.StreamFile(uri, info),
+                    loadedName = name,
+                    isBusy = false,
+                    status = "Ready: $name • $duration • ${info.formatLabel}. Tap STREAM TO SELF."
+                )
+            } catch (error: Throwable) {
+                fail(error)
+            }
+        }
+    }
+
+    fun synthesizeAndPrepare() {
+        val text = _uiState.value.text.trim()
+        if (text.isBlank()) {
+            _uiState.value = _uiState.value.copy(status = "Enter text first.")
+            return
+        }
+        scope.launch {
+            setBusy("Turning your text into speech…")
+            try {
+                val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
+                val audio = withContext(Dispatchers.IO) { decoder.decodeFile(file) }
+                file.delete()
+                val name = "Self voice: ${text.take(36)}"
+                _waveform.value = preview(audio.samples)
+                _uiState.value = _uiState.value.copy(
+                    loadedSource = PreparedAudioSource.Memory(audio),
+                    loadedName = name,
+                    isBusy = false,
+                    status = "Speech ready. Tap STREAM TO SELF."
+                )
+            } catch (error: Throwable) {
+                fail(error)
+            }
+        }
+    }
+
+    fun transmitLoaded() {
+        val source = _uiState.value.loadedSource
+        if (source == null) {
+            _uiState.value = _uiState.value.copy(status = "Prepare text or choose a file first.")
+            return
+        }
+        startTransmission(source)
+    }
+
+    fun stopTransmission() {
+        transmitter.stop()
+        transmitJob?.cancel()
+        transmitJob = null
+        _uiState.value = _uiState.value.copy(isBusy = false, isTransmitting = false, status = "Playback stopped")
+    }
+
+    fun setSafeVolume() {
+        val state = _uiState.value
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val fraction = when (state.listeningPath) {
+            ListeningPath.HEADPHONES -> 0.28f
+            ListeningPath.BONE_CONDUCTION -> 0.22f
+            ListeningPath.PHONE_SPEAKER -> 0.62f
+        }
+        val target = (max * fraction).roundToInt().coerceIn(1, max)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+        _uiState.value = state.copy(status = "Playback volume set to ${(fraction * 100).roundToInt()}%.")
+    }
+
+    private fun startTransmission(source: PreparedAudioSource) {
+        val snapshot = _uiState.value
+        val hardware = snapshot.hardware
+        if (hardware == null) {
+            _uiState.value = snapshot.copy(status = "Audio hardware is still initializing.")
+            return
+        }
+
+        val resolvedPath = if (snapshot.listeningPath != ListeningPath.PHONE_SPEAKER && !hardware.external) {
+            ListeningPath.PHONE_SPEAKER
+        } else {
+            snapshot.listeningPath
+        }
+
+        transmitter.stop()
+        transmitJob?.cancel()
+        transmitJob = null
+        val sourceName = snapshot.loadedName ?: "selected audio"
+        _uiState.value = snapshot.copy(
+            listeningPath = resolvedPath,
+            isBusy = true,
+            isTransmitting = true,
+            report = null,
+            status = "Opening ${resolvedPath.label} and streaming $sourceName…"
+        )
+        transmitJob = scope.launch(Dispatchers.IO) {
+            try {
+                transmitter.transmit(
+                    source = source,
+                    decoder = decoder,
+                    requestedSampleRate = hardware.requestedSampleRate,
+                    requestedCarrierHz = snapshot.carrierHz,
+                    depth = snapshot.depth,
+                    thoughtMode = snapshot.thoughtMode,
+                    listeningPath = resolvedPath,
+                    preferredDevice = if (resolvedPath == ListeningPath.PHONE_SPEAKER) hardware.outputDevice else hardware.outputDevice,
+                    onStarted = { report ->
+                        _uiState.value = _uiState.value.copy(
+                            isBusy = false,
+                            isTransmitting = true,
+                            report = report,
+                            status = "${report.thoughtMode.label} is playing through ${report.listeningPath.label}"
+                        )
+                    },
+                    onWaveform = { _waveform.value = it }
+                )
+                _uiState.value = _uiState.value.copy(
+                    isBusy = false,
+                    isTransmitting = false,
+                    status = "Finished playing $sourceName"
+                )
+            } catch (error: Throwable) {
+                fail(error)
+            }
+        }
+    }
+
+    private fun profileCarrier(mode: ThoughtMode, hardware: HardwareMode): Float = when (mode) {
+        ThoughtMode.INNER_VOICE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
+        ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE -> 14_500f.coerceIn(hardware.carrierMinHz, hardware.carrierMaxHz)
+        ThoughtMode.BEAM_WHISPER -> (hardware.carrierMaxHz - 250f).coerceAtLeast(hardware.carrierMinHz)
+    }
+
+    private fun routeStatus(path: ListeningPath, hardware: HardwareMode): String = when (path) {
+        ListeningPath.HEADPHONES -> if (hardware.external) {
+            "Headphone route detected. Unlimited files stream in small chunks instead of filling memory."
+        } else {
+            "No headset detected, so Phone Speaker was selected automatically."
+        }
+
+        ListeningPath.BONE_CONDUCTION -> if (hardware.external) {
+            "External route detected. Select your bone-conduction headset in Android audio output."
+        } else {
+            "No headset detected, so Phone Speaker was selected automatically."
+        }
+
+        ListeningPath.PHONE_SPEAKER -> "Phone Speaker ready. ${hardware.detail}"
+    }
+
+    private fun formatDuration(seconds: Double): String {
+        val total = seconds.roundToInt().coerceAtLeast(0)
+        val hours = total / 3_600
+        val minutes = total % 3_600 / 60
+        val remaining = total % 60
+        return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, remaining) else "%d:%02d".format(minutes, remaining)
+    }
+
+    private fun preview(samples: FloatArray, target: Int = 512): FloatArray {
+        if (samples.isEmpty()) return FloatArray(0)
+        if (samples.size <= target) return samples.copyOf()
+        val output = FloatArray(target)
+        val step = samples.size.toDouble() / target
+        for (i in output.indices) output[i] = samples[(i * step).toInt().coerceAtMost(samples.lastIndex)]
+        return output
+    }
+
+    private fun setBusy(message: String) {
+        _uiState.value = _uiState.value.copy(isBusy = true, status = message)
+    }
+
+    private fun fail(error: Throwable) {
+        _uiState.value = _uiState.value.copy(
+            isBusy = false,
+            isTransmitting = false,
+            status = "Could not play that source: ${error.message ?: error::class.java.simpleName}"
+        )
+    }
+
+    private fun queryName(uri: Uri): String {
+        var cursor: Cursor? = null
+        return try {
+            cursor = appContext.contentResolver.query(uri, null, null, null, null)
+            val index = cursor?.getColumnIndex(OpenableColumns.DISPLAY_NAME) ?: -1
+            if (cursor?.moveToFirst() == true && index >= 0) cursor.getString(index) else "Selected audio"
+        } finally {
+            cursor?.close()
+        }
+    }
+
+    override fun close() {
+        transmitter.stop()
+        hardwareChecker.stop()
+        tts.close()
+        scope.cancel()
+    }
+}
