@@ -13,9 +13,21 @@ enum class ThoughtMode(val label: String, val description: String) {
         "Inner Voice",
         "The proven centered voice engine from the working InnerVoice app."
     ),
+    CENTER_LOCK(
+        "Center Lock",
+        "Dual-mono narrow-band speech with reduced spatial cues for a stronger inside-the-head headphone image."
+    ),
     FREY_ACOUSTIC_SIM(
-        "Frey Acoustic Simulator",
-        "Ordinary audio that blends the source with brief zero-DC click packets to imitate the reported click-like perception without emitting microwaves."
+        "Cranial Click",
+        "Ordinary audio blended with brief zero-DC click packets to imitate the reported click-like quality without microwave output."
+    ),
+    MASKED_WHISPER(
+        "Masked Whisper",
+        "Low-level speech blended with shaped noise so the voice feels less like a room source and more like an internal trace."
+    ),
+    BONE_TAP(
+        "Bone Tap",
+        "Speech with low-frequency tap emphasis for bone-conduction headsets or close-contact listening."
     ),
     PATENT_SSB(
         "Patent SSB",
@@ -54,7 +66,7 @@ enum class ListeningPath(val label: String, val description: String) {
     ),
     PHONE_SPEAKER(
         "Phone Speaker",
-        "Uses the phone speaker. Inner Voice, Frey Acoustic Simulator, and Beam Whisper are the useful phone-only profiles."
+        "Uses the phone speaker. Inner Voice, Cranial Click, Masked Whisper, and Beam Whisper are the useful phone-only profiles."
     ),
     EXTERNAL_ARRAY(
         "External Ultrasonic Array",
