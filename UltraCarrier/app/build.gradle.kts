@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.innervoice"
+        applicationId = "com.vaan.ultracarrier.acousticarray"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "4.0.0-innervoice"
+        versionCode = 7
+        versionName = "7.0.0-acoustic-array"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
