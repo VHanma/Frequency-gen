@@ -8,11 +8,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.vhanma.lightcode.photophone.loop"
+        applicationId = "com.vhanma.lightcode.investigation"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0-loop"
+        versionCode = 1
+        versionName = "1.0.0-investigation"
     }
 
     buildTypes {
