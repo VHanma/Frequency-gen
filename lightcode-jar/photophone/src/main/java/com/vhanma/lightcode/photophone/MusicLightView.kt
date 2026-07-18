@@ -37,7 +37,7 @@ internal enum class BeamGeometry {
 
 internal class MusicLightView(
     context: Context,
-    private val program: OpticalProgram,
+    private val program: OpticalSignal,
     private val mode: ScreenPhotophoneMode,
     private val modulationGain: Float,
     private val reverseRows: Boolean,
@@ -127,7 +127,7 @@ internal class MusicLightView(
         val taps = 16
         repeat(taps) { tap ->
             val time = elapsed + frameDuration * tap.toDouble() / taps.toDouble()
-            average += SignalCore.sampleAt(program, time)
+            average += program.sampleAt(time)
         }
         val value = (average / taps.toDouble()).toFloat()
         val brightness = (0.50f + 0.49f * value * modulationGain).coerceIn(0.01f, 1f)
@@ -137,12 +137,12 @@ internal class MusicLightView(
 
     private fun drawScanlinePcm(canvas: Canvas, elapsed: Double, refreshRate: Double) {
         val effectiveRowRate = refreshRate * rows.toDouble()
-        var previous = SignalCore.sampleAt(program, elapsed - 1.0 / effectiveRowRate)
+        var previous = program.sampleAt(elapsed - 1.0 / effectiveRowRate)
         var largestStep = 1e-6f
 
         for (row in 0 until rows) {
             val sampleTime = elapsed + row.toDouble() / effectiveRowRate
-            val sample = SignalCore.sampleAt(program, sampleTime)
+            val sample = program.sampleAt(sampleTime)
             waveform[row] = sample
             largestStep = maxOf(largestStep, abs(sample - previous))
             previous = sample
@@ -152,7 +152,7 @@ internal class MusicLightView(
         val safeGain = 0.90f / (rows.toFloat() * largestStep)
         val frameGain = min(requestedGain, safeGain)
 
-        previous = SignalCore.sampleAt(program, elapsed - 1.0 / effectiveRowRate)
+        previous = program.sampleAt(elapsed - 1.0 / effectiveRowRate)
         for (row in 0 until rows) {
             val delta = rows.toFloat() * frameGain * (waveform[row] - previous)
             nextRows[row] = (currentRows[row] + delta).coerceIn(0.01f, 0.995f)
@@ -176,16 +176,12 @@ internal class MusicLightView(
         paint.color = opticalColor(brightness)
         val width = canvas.width.toFloat()
         when (geometry) {
-            BeamGeometry.FULL_APERTURE -> {
-                canvas.drawRect(0f, top, width, bottom, paint)
-            }
+            BeamGeometry.FULL_APERTURE -> canvas.drawRect(0f, top, width, bottom, paint)
             BeamGeometry.HOLLOW_BEAM -> {
                 canvas.drawRect(0f, top, width * 0.34f, bottom, paint)
                 canvas.drawRect(width * 0.66f, top, width, bottom, paint)
             }
-            BeamGeometry.CENTRAL_SHAFT -> {
-                canvas.drawRect(width * 0.24f, top, width * 0.76f, bottom, paint)
-            }
+            BeamGeometry.CENTRAL_SHAFT -> canvas.drawRect(width * 0.24f, top, width * 0.76f, bottom, paint)
             BeamGeometry.TWIN_BEAM -> {
                 canvas.drawRect(width * 0.08f, top, width * 0.38f, bottom, paint)
                 canvas.drawRect(width * 0.62f, top, width * 0.92f, bottom, paint)
