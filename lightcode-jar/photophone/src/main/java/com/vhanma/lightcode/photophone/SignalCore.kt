@@ -8,14 +8,25 @@ import kotlin.math.ln
 import kotlin.math.sin
 import kotlin.math.tanh
 
+internal interface OpticalSignal : AutoCloseable {
+    val sampleRate: Int
+    val label: String
+    val loop: Boolean
+    val durationSeconds: Double
+    fun sampleAt(seconds: Double): Float
+    override fun close() = Unit
+}
+
 internal data class OpticalProgram(
     val samples: FloatArray,
-    val sampleRate: Int,
-    val label: String,
-    val loop: Boolean = false
-) {
-    val durationSeconds: Double
+    override val sampleRate: Int,
+    override val label: String,
+    override val loop: Boolean = false
+) : OpticalSignal {
+    override val durationSeconds: Double
         get() = if (sampleRate <= 0) 0.0 else samples.size.toDouble() / sampleRate.toDouble()
+
+    override fun sampleAt(seconds: Double): Float = SignalCore.sampleAt(this, seconds)
 }
 
 internal enum class MusicProcessing {
