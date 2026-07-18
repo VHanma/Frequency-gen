@@ -28,7 +28,7 @@ internal data class ProofResult(
 
 internal class ProofRecorder(
     private val context: Context,
-    private val sourceProgram: OpticalProgram,
+    private val sourceProgram: OpticalSignal,
     private val onStatus: (String) -> Unit,
     private val onComplete: (ProofResult) -> Unit,
     private val onError: (String) -> Unit
@@ -73,13 +73,16 @@ internal class ProofRecorder(
         recorder = audioRecord
         val builder = ShortBuilder()
         val buffer = ShortArray(minimumBytes / 2)
-        onStatus("Proof Mode is recording the jar. The app has no phone-speaker playback path.")
+        onStatus("Proof Mode is recording the receiver. The app has no phone-speaker playback path.")
         audioRecord.startRecording()
 
         try {
             while (running) {
                 val count = audioRecord.read(buffer, 0, buffer.size)
-                if (count < 0) error("Microphone read failed: $count")
+                if (count < 0) {
+                    if (!running) break
+                    error("Microphone read failed: $count")
+                }
                 if (count == 0) continue
                 builder.add(buffer, count)
             }
@@ -114,10 +117,10 @@ internal class ProofRecorder(
                 append("Recorded level: ")
                 append("%.1f".format(rms))
                 append(" dBFS\n")
-                append("Best song-envelope match: ")
+                append("Best source-envelope match: ")
                 append((correlation * 100.0).toInt().coerceIn(0, 100))
                 append("%\n\n")
-                append("The transmitter used screen light or USB bulk PCM. It did not create an Android AudioTrack for the song.")
+                append("The transmitter used light output and did not create an Android AudioTrack for the payload.")
             }
         )
         onComplete(result)
@@ -132,28 +135,31 @@ internal class ProofRecorder(
     )
 
     private fun envelopeCorrelation(
-        source: OpticalProgram,
+        source: OpticalSignal,
         captured: ShortArray,
         capturedRate: Int
     ): Double {
         val blockSeconds = 0.020
-        val sourceBlock = (source.sampleRate * blockSeconds).toInt().coerceAtLeast(1)
         val capturedBlock = (capturedRate * blockSeconds).toInt().coerceAtLeast(1)
         val sourceEnvelope = mutableListOf<Double>()
         val capturedEnvelope = mutableListOf<Double>()
+        val capturedSeconds = captured.size.toDouble() / capturedRate.toDouble()
+        val sourceSeconds = if (source.loop) capturedSeconds else minOf(source.durationSeconds, capturedSeconds)
+        val sourceBlocks = (sourceSeconds / blockSeconds).toInt().coerceAtLeast(0)
+        val tapsPerBlock = 12
 
-        var index = 0
-        while (index + sourceBlock <= source.samples.size) {
+        repeat(sourceBlocks) { blockIndex ->
+            val blockStart = blockIndex * blockSeconds
             var sum = 0.0
-            for (i in index until index + sourceBlock) {
-                val value = source.samples[i]
+            repeat(tapsPerBlock) { tap ->
+                val time = blockStart + blockSeconds * (tap + 0.5) / tapsPerBlock.toDouble()
+                val value = source.sampleAt(time).toDouble()
                 sum += value * value
             }
-            sourceEnvelope += sqrt(sum / sourceBlock.toDouble())
-            index += sourceBlock
+            sourceEnvelope += sqrt(sum / tapsPerBlock.toDouble())
         }
 
-        index = 0
+        var index = 0
         while (index + capturedBlock <= captured.size) {
             var sum = 0.0
             for (i in index until index + capturedBlock) {
@@ -190,9 +196,7 @@ internal class ProofRecorder(
                 captureEnergy += b * b
             }
             val denominator = sqrt(sourceEnergy * captureEnergy)
-            if (denominator > 1e-12) {
-                best = maxOf(best, numerator / denominator)
-            }
+            if (denominator > 1e-12) best = maxOf(best, numerator / denominator)
         }
         return best.coerceIn(0.0, 1.0)
     }
