@@ -1,0 +1,1 @@
+Build trigger for the isolated one-click LightCode Investigation Lab APK.
