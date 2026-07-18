@@ -33,7 +33,7 @@ internal data class UsbLightTarget(
 
 internal class UsbBulkPcmEngine(
     context: Context,
-    private val program: OpticalProgram,
+    private val program: OpticalSignal,
     private val onStatus: (String) -> Unit,
     private val onFinished: () -> Unit
 ) {
@@ -187,11 +187,7 @@ internal class UsbBulkPcmEngine(
                 if (!program.loop && seconds >= program.durationSeconds) {
                     running = false
                 }
-                val sample = if (running || program.loop) {
-                    SignalCore.sampleAt(program, seconds)
-                } else {
-                    0f
-                }
+                val sample = if (running || program.loop) program.sampleAt(seconds) else 0f
                 val pcm = (sample.coerceIn(-1f, 1f) * 32767f).toInt().toShort()
                 packet.putShort(pcm)
                 outputSampleIndex++
