@@ -1,0 +1,1 @@
+The user-facing delivery is a direct APK link from the completed GitHub artifact. Termux is only a fallback.
