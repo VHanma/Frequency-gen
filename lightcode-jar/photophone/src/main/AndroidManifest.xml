@@ -14,22 +14,10 @@
         android:theme="@style/Theme.LightCodePhotophone">
 
         <activity
-            android:name=".UniversalPayloadEncoderActivity"
+            android:name=".UniversalPayloadActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:exported="true"
-            android:label="Universal Payload Encoder"
-            android:screenOrientation="sensorPortrait">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".InvestigationLabActivity"
-            android:configChanges="keyboardHidden|orientation|screenSize"
-            android:exported="true"
-            android:label="Investigation Protocol Lab"
+            android:label="Universal Light Payload"
             android:screenOrientation="sensorPortrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
