@@ -1,0 +1,87 @@
+name: Build LightCode Investigation Lab APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'agent/lightcode-investigation-lab'
+    paths:
+      - 'lightcode-jar/photophone/**'
+      - 'LIGHTCODE_INVESTIGATION_LAB_RESEARCH.md'
+      - '.github/workflows/build-lightcode-investigation-lab-apk.yml'
+  pull_request:
+    branches:
+      - 'agent/lightcode-photophone-loop'
+      - main
+    paths:
+      - 'lightcode-jar/photophone/**'
+      - 'LIGHTCODE_INVESTIGATION_LAB_RESEARCH.md'
+      - '.github/workflows/build-lightcode-investigation-lab-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lightcode-jar
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build Investigation Lab debug APK
+        id: investigation_build
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --stacktrace :photophone:assembleDebug 2>&1 | tee investigation-build.log
+          code=${PIPESTATUS[0]}
+          echo "$code" > investigation-build-exit.txt
+          exit 0
+
+      - name: Upload compiler log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCode-Investigation-Lab-build-log
+          path: |
+            lightcode-jar/investigation-build.log
+            lightcode-jar/investigation-build-exit.txt
+          if-no-files-found: error
+
+      - name: Fail when compiler failed
+        shell: bash
+        run: |
+          code=$(cat investigation-build-exit.txt)
+          if [ "$code" != "0" ]; then
+            echo "Investigation Lab compilation failed with exit code $code"
+            exit "$code"
+          fi
+
+      - name: Upload Investigation Lab APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LightCode-Investigation-Lab-debug-apk
+          path: lightcode-jar/photophone/build/outputs/apk/debug/photophone-debug.apk
+          if-no-files-found: error
