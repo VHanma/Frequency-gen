@@ -7,11 +7,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
-import kotlin.math.floor
 
 internal class TorchLoopEngine(
     context: Context,
-    private val program: OpticalProgram,
+    private val program: OpticalSignal,
     private val updateRateHz: Int,
     private val modulationGain: Float,
     private val onStatus: (String) -> Unit,
@@ -78,7 +77,12 @@ internal class TorchLoopEngine(
             if (!running) return
             val rate = updateRateHz.coerceIn(1, 40)
             val elapsed = (System.nanoTime() - startedAtNanos) / 1_000_000_000.0
-            val sample = sampleAt(elapsed)
+            if (!program.loop && elapsed >= program.durationSeconds) {
+                stop()
+                onFinished()
+                return
+            }
+            val sample = program.sampleAt(elapsed)
             val light = (0.5f + 0.5f * sample * modulationGain.coerceIn(0.05f, 2f))
                 .coerceIn(0f, 1f)
 
@@ -104,22 +108,5 @@ internal class TorchLoopEngine(
             val nextAt = startedAtUptimeMs + tick * 1000L / rate.toLong()
             handler.postAtTime(this, nextAt)
         }
-    }
-
-    private fun sampleAt(seconds: Double): Float {
-        if (program.samples.isEmpty() || program.sampleRate <= 0) return 0f
-        var time = seconds
-        val duration = program.durationSeconds
-        if (program.loop && duration > 0.0) {
-            time %= duration
-            if (time < 0.0) time += duration
-        }
-        if (time < 0.0 || time >= duration) return 0f
-
-        val position = time * program.sampleRate.toDouble()
-        val index = floor(position).toInt().coerceIn(0, program.samples.lastIndex)
-        val next = (index + 1).coerceAtMost(program.samples.lastIndex)
-        val fraction = (position - index.toDouble()).toFloat()
-        return program.samples[index] * (1f - fraction) + program.samples[next] * fraction
     }
 }
