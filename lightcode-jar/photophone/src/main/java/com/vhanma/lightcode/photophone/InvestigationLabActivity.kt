@@ -35,19 +35,21 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.concurrent.thread
 
 class InvestigationLabActivity : Activity() {
     private lateinit var controlView: View
-    private lateinit var protocolSpinner: Spinner
+    private lateinit var payloadSourceSpinner: Spinner
+    private lateinit var carrierSpinner: Spinner
     private lateinit var outputSpinner: Spinner
     private lateinit var colorSpinner: Spinner
     private lateinit var geometrySpinner: Spinner
     private lateinit var rowsSpinner: Spinner
     private lateinit var textInput: EditText
-    private lateinit var seedInput: EditText
     private lateinit var chooseFileButton: Button
     private lateinit var fileLabel: TextView
-    private lateinit var descriptionText: TextView
+    private lateinit var carrierDescription: TextView
+    private lateinit var seedInput: EditText
     private lateinit var gainSeek: SeekBar
     private lateinit var gainLabel: TextView
     private lateinit var loopCheck: CheckBox
@@ -61,9 +63,10 @@ class InvestigationLabActivity : Activity() {
 
     private var selectedFileUri: Uri? = null
     private var selectedFileName = ""
-    private var selectedFileBytes: ByteArray? = null
-    private var currentProtocol: InvestigationProtocol? = null
-    private var pendingProgram: OpticalProgram? = null
+    private var selectedFileSize: Long? = null
+    private var currentSignal: OpticalSignal? = null
+    private var pendingSignal: OpticalSignal? = null
+    private var currentPrepared: PreparedPayload? = null
     private var running = false
     private var busy = false
     private var sessionStartedAt = 0L
@@ -79,9 +82,9 @@ class InvestigationLabActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != ACTION_USB_PERMISSION) return
             val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-            val program = pendingProgram
-            if (granted && program != null) {
-                startUsb(program)
+            val signal = pendingSignal
+            if (granted && signal != null) {
+                startUsb(signal, permissionAlreadyGranted = true)
             } else {
                 fail("USB permission was not granted.")
             }
@@ -94,7 +97,8 @@ class InvestigationLabActivity : Activity() {
         registerUsbReceiver()
         controlView = buildControlView()
         setContentView(controlView)
-        updateProtocolDescription(0)
+        updatePayloadControls(0)
+        updateCarrierDescription(0)
     }
 
     private fun buildControlView(): View {
@@ -113,20 +117,22 @@ class InvestigationLabActivity : Activity() {
 
         root.addView(label("LIGHTCODE INVESTIGATION LAB", 28f, Color.WHITE, true))
         root.addView(label(
-            "Declassified protocol reconstruction, established optical coding, frontier channel experiments, and separately labeled fringe-inspired patterns. Every live run is meant for an enclosed jar, photodiode, camera, or other instrument receiver.",
+            "Choose exactly what you want encoded, then choose how its bytes ride through light. Text and uploaded files use the same recoverable block container.",
             14f,
             0xFFBDBDBD.toInt()
         ))
 
-        root.addView(section("PROTOCOL"))
-        protocolSpinner = spinner(InvestigationSignalFactory.protocolNames())
-        root.addView(protocolSpinner)
-        descriptionText = label("", 13f, 0xFFFFCC80.toInt())
-        root.addView(descriptionText)
+        root.addView(section("1. WHAT DO YOU WANT TO ENCODE?"))
+        payloadSourceSpinner = spinner(listOf(
+            "TYPE TEXT",
+            "UPLOAD ANY FILE"
+        ))
+        root.addView(payloadSourceSpinner)
 
         textInput = EditText(this).apply {
+            hint = "Type the complete message to encode through light"
             setText("Controlled optical laboratory message")
-            minLines = 3
+            minLines = 5
             setTextColor(Color.WHITE)
             setHintTextColor(0xFF777777.toInt())
             setBackgroundColor(0xFF151515.toInt())
@@ -134,22 +140,37 @@ class InvestigationLabActivity : Activity() {
         }
         root.addView(textInput, matchWrap())
 
-        chooseFileButton = actionButton("CHOOSE EXACT FILE PAYLOAD") { chooseFile() }
+        chooseFileButton = actionButton("UPLOAD ANY FILE TO ENCODE") { chooseFile() }
+            .apply { setBackgroundColor(0xFF00695C.toInt()) }
         root.addView(chooseFileButton)
-        fileLabel = label("No file selected", 13f, 0xFF8E8E8E.toInt())
+        fileLabel = label(
+            "No file selected. Photos, songs, video, PDF, ZIP, APK, documents and arbitrary binary files are accepted.",
+            13f,
+            0xFFFFCC80.toInt()
+        )
         root.addView(fileLabel)
 
+        root.addView(section("2. CHOOSE THE LIGHT-DATA CARRIER"))
+        carrierSpinner = spinner(
+            UniversalPayloadEncoder.carrierNames() +
+                listOf("SRI 0/6/16 Hz historical trial schedule export")
+        )
+        root.addView(carrierSpinner)
+        carrierDescription = label("", 13f, 0xFFFFCC80.toInt())
+        root.addView(carrierDescription)
+
         seedInput = EditText(this).apply {
-            hint = "Randomization seed, blank = current time"
+            hint = "Schedule randomization seed, blank = current time"
             setTextColor(Color.WHITE)
             setHintTextColor(0xFF777777.toInt())
             setBackgroundColor(0xFF151515.toInt())
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }
         root.addView(seedInput, matchWrap())
 
-        root.addView(section("OUTPUT"))
+        root.addView(section("3. CHOOSE THE LIGHT OUTPUT"))
         outputSpinner = spinner(listOf(
             "Scanline screen into enclosed receiver",
             "Whole-screen low-band output",
@@ -186,7 +207,7 @@ class InvestigationLabActivity : Activity() {
         root.addView(gainSeek)
 
         loopCheck = CheckBox(this).apply {
-            text = "Loop protocol until Stop"
+            text = "Loop the entire encoded payload until Stop"
             setTextColor(Color.WHITE)
             isChecked = true
         }
@@ -199,7 +220,7 @@ class InvestigationLabActivity : Activity() {
         root.addView(reverseRowsCheck)
 
         proofCheck = CheckBox(this).apply {
-            text = "Record receiver microphone WAV and correlation envelope"
+            text = "Record receiver microphone WAV and source correlation"
             setTextColor(Color.WHITE)
         }
         root.addView(proofCheck)
@@ -212,33 +233,45 @@ class InvestigationLabActivity : Activity() {
         root.addView(forceSilentCheck)
 
         enclosedEmitterCheck = CheckBox(this).apply {
-            text = "Emitter is enclosed or aimed only at a jar/sensor, not a person"
+            text = "Emitter is enclosed or aimed only at a jar, photodiode, camera or sensor"
             setTextColor(Color.WHITE)
         }
         root.addView(enclosedEmitterCheck)
 
-        startButton = actionButton("START CONTROLLED LAB RUN") {
-            if (running || busy) stopAll("Run stopped by user.") else prepareProtocol()
+        startButton = actionButton("ENCODE MY PAYLOAD AND START LIGHT") {
+            if (running || busy) stopAll("Run stopped by user.") else prepareSelectedPayload()
         }.apply { setBackgroundColor(0xFF4527A0.toInt()) }
         root.addView(startButton)
 
-        root.addView(actionButton("SHOW RESEARCH MAP") {
+        root.addView(actionButton("SHOW PAYLOAD FORMAT + RESEARCH MAP") {
             AlertDialog.Builder(this)
-                .setTitle("Evidence map")
+                .setTitle("Universal payload architecture")
                 .setMessage(researchMap())
                 .setPositiveButton("CLOSE", null)
                 .show()
         })
 
-        progressText = label("No protocol running.", 13f, 0xFFFFCC80.toInt())
+        progressText = label("No payload running.", 13f, 0xFFFFCC80.toInt())
         root.addView(progressText)
-        statusText = label("Ready.", 13f, 0xFF80CBC4.toInt())
+        statusText = label("Ready to type or upload what you want encoded.", 13f, 0xFF80CBC4.toInt())
         root.addView(statusText)
 
-        protocolSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        root.addView(label(
+            "No app-defined payload size ceiling is used. Uploaded content is copied and framed on disk in 64 KiB blocks, with CRC32 per block and SHA-256 for the complete original file. Available storage and transmission time are the practical limits.",
+            12f,
+            0xFF8E8E8E.toInt()
+        ))
+
+        payloadSourceSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                updateProtocolDescription(position)
+                updatePayloadControls(position)
+            }
+        }
+        carrierSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateCarrierDescription(position)
             }
         }
         outputSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
@@ -255,30 +288,25 @@ class InvestigationLabActivity : Activity() {
         return scroll
     }
 
-    private fun updateProtocolDescription(position: Int) {
-        val needsText = position == 4 || position == 6
-        val needsFile = position == 5
-        val needsSeed = position == 9
-        textInput.visibility = if (needsText) View.VISIBLE else View.GONE
-        chooseFileButton.visibility = if (needsFile) View.VISIBLE else View.GONE
+    private fun updatePayloadControls(position: Int) {
+        val typed = position == 0
+        textInput.visibility = if (typed) View.VISIBLE else View.GONE
+        chooseFileButton.visibility = if (typed) View.GONE else View.VISIBLE
         fileLabel.visibility = chooseFileButton.visibility
-        seedInput.visibility = if (needsSeed) View.VISIBLE else View.GONE
+    }
 
-        val preview = runCatching {
-            InvestigationSignalFactory.create(
-                index = position,
-                text = textInput.text?.toString().orEmpty(),
-                fileBytes = if (needsFile) selectedFileBytes ?: ByteArray(1) else null,
-                fileName = selectedFileName.ifBlank { "preview.bin" },
-                loop = true,
-                seed = 1L
-            )
-        }.getOrNull()
-
-        descriptionText.text = if (preview == null) {
-            "Select the required input, then start the protocol."
-        } else {
-            "${preview.evidenceLayer.name.replace('_', ' ')}\n${preview.description}"
+    private fun updateCarrierDescription(position: Int) {
+        val scheduleIndex = UniversalCarrier.entries.size
+        seedInput.visibility = if (position == scheduleIndex) View.VISIBLE else View.GONE
+        carrierDescription.text = when (position) {
+            0 -> "ESTABLISHED ENGINEERING: self-clocking Manchester transitions. About 300 payload bits/s before framing."
+            1 -> "ESTABLISHED ENGINEERING: four audio/light frequencies carry two bits per symbol. About 1,200 payload bits/s before framing."
+            2 -> "ESTABLISHED + ANCIENT-TIMING INSPIRATION: each four-bit value selects one of sixteen pulse positions."
+            3 -> "ESTABLISHED ENGINEERING: every payload bit is spread by a PRBS-127 correlation code for weak-channel recovery."
+            4 -> "ESTABLISHED ENGINEERING: a Gold-like code spreads each payload bit and gives the stream a repeatable correlation identity."
+            5 -> "FRONTIER CHANNEL METHOD: payload bits select upward or downward logarithmic-style chirps for multipath and resonance experiments."
+            6 -> "REPORTED-FRINGE-INSPIRED TIMING: exact 4-FSK payload is gated by a 37 Hz pulse pattern inspired by declassified Kirlian-device descriptions."
+            else -> "DECLASSIFIED HISTORICAL RECONSTRUCTION: exports the randomized twelve null, twelve 6 Hz and twelve 16 Hz trial schedule. It does not encode your payload and does not flash the screen."
         }
     }
 
@@ -298,106 +326,116 @@ class InvestigationLabActivity : Activity() {
         val uri = data?.data ?: return
         selectedFileUri = uri
         selectedFileName = displayName(uri)
+        selectedFileSize = displaySize(uri)
         runCatching {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        fileLabel.text = buildString {
+            append("READY TO ENCODE: ").append(selectedFileName)
+            selectedFileSize?.let { append(" · ").append(formatBytes(it)) }
+            append("\nThe file will be streamed into a disk-backed block container when Start is pressed.")
+        }
+        status("Uploaded payload selected.")
+    }
+
+    private fun prepareSelectedPayload() {
+        if (busy || running) return
+        val scheduleIndex = UniversalCarrier.entries.size
+        if (carrierSpinner.selectedItemPosition == scheduleIndex) {
+            exportHistoricalSchedule()
+            return
+        }
+
+        if (outputSpinner.selectedItemPosition <= 2 && !enclosedEmitterCheck.isChecked) {
+            status("Confirm that the emitter is enclosed or aimed only at the jar or sensor.")
+            return
+        }
+
+        val typed = payloadSourceSpinner.selectedItemPosition == 0
+        if (typed && textInput.text.toString().isEmpty()) {
+            status("Type the text you want encoded.")
+            return
+        }
+        if (!typed && selectedFileUri == null) {
+            status("Tap UPLOAD ANY FILE TO ENCODE first.")
+            return
+        }
+
         busy = true
-        status("Reading file into the controlled packet buffer…")
-        Thread {
+        startButton.text = "STOP"
+        status(
+            if (typed) "Building the typed-text payload container…"
+            else "Streaming the selected file into recoverable 64 KiB blocks…"
+        )
+
+        val carrier = UniversalCarrier.entries[carrierSpinner.selectedItemPosition]
+        thread(name = "InvestigationPayloadPrepare") {
             runCatching {
-                contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: error("Unable to read the selected file.")
-            }.onSuccess { bytes ->
+                val prepared = if (typed) {
+                    UniversalPayloadEncoder.prepareText(this, textInput.text.toString())
+                } else {
+                    UniversalPayloadEncoder.prepareUri(
+                        this,
+                        selectedFileUri ?: error("Selected file was lost."),
+                        selectedFileName.ifBlank { "payload.bin" }
+                    )
+                }
+                prepared to UniversalPayloadSignal(prepared, carrier, loopCheck.isChecked)
+            }.onSuccess { (prepared, signal) ->
                 runOnUiThread {
-                    selectedFileBytes = bytes
-                    busy = false
-                    fileLabel.text = "Loaded: $selectedFileName · ${bytes.size} bytes"
-                    status("File payload ready.")
+                    currentPrepared = prepared
+                    pendingSignal = signal
+                    status(
+                        "Payload ready: ${prepared.originalName} · ${formatBytes(prepared.originalLength)} · " +
+                            "${prepared.blockCount} block(s) · SHA-256 ${prepared.sha256Hex.take(16)}…"
+                    )
+                    ensurePermissionsAndStart(signal)
                 }
             }.onFailure { error ->
-                runOnUiThread { fail("File read failed: ${error.message}") }
+                runOnUiThread { fail("Payload preparation failed: ${error.message}") }
             }
-        }.start()
+        }
     }
 
-    private fun prepareProtocol() {
-        if (busy || running) return
-        val outputIndex = outputSpinner.selectedItemPosition
-        if (outputIndex <= 2 && !enclosedEmitterCheck.isChecked) {
-            status("Confirm that the emitter is enclosed or aimed only at the jar/sensor.")
-            return
+    private fun ensurePermissionsAndStart(signal: OpticalSignal) {
+        val needed = mutableListOf<String>()
+        if (proofCheck.isChecked && !hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            needed += Manifest.permission.RECORD_AUDIO
         }
-
-        val seed = seedInput.text.toString().toLongOrNull() ?: System.currentTimeMillis()
-        val protocol = runCatching {
-            InvestigationSignalFactory.create(
-                index = protocolSpinner.selectedItemPosition,
-                text = textInput.text.toString(),
-                fileBytes = selectedFileBytes,
-                fileName = selectedFileName,
-                loop = loopCheck.isChecked,
-                seed = seed
-            )
-        }.getOrElse { error ->
-            fail(error.message ?: "Protocol creation failed.")
-            return
+        if (outputSpinner.selectedItemPosition == 2 && !hasPermission(Manifest.permission.CAMERA)) {
+            needed += Manifest.permission.CAMERA
         }
-        currentProtocol = protocol
-
-        val schedule = protocol.eventSchedule
-        if (schedule != null) {
-            val location = saveText(
-                fileName = "${schedule.name}_${schedule.seed}.csv",
-                mimeType = "text/csv",
-                text = schedule.toCsv()
-            )
-            AlertDialog.Builder(this)
-                .setTitle("Declassified trial schedule exported")
-                .setMessage(
-                    "Saved to:\n$location\n\n${protocol.description}\n\n" +
-                        "This mode exports the randomized 36-trial design without producing a human-facing strobe."
-                )
-                .setPositiveButton("CLOSE", null)
-                .show()
-            logSession(protocol, "schedule-export", "saved=$location")
-            return
+        if (needed.isNotEmpty()) {
+            pendingSignal = signal
+            requestPermissions(needed.toTypedArray(), REQUEST_RUNTIME_PERMISSIONS)
+        } else {
+            startSignal(signal)
         }
-
-        if (protocol.instrumentOnly && outputIndex != 3) {
-            status("This protocol is instrument-only and requires the enclosed USB LED controller output.")
-            return
-        }
-
-        val program = protocol.program ?: return fail("Protocol contains no signal program.")
-        pendingProgram = program
-        if (proofCheck.isChecked && !hasMicrophonePermission()) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_MIC)
-            return
-        }
-        startProgram(program)
     }
 
-    private fun startProgram(program: OpticalProgram) {
+    private fun startSignal(signal: OpticalSignal) {
+        currentSignal = signal
+        pendingSignal = signal
         if (forceSilentCheck.isChecked) {
             runCatching { audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0) }
         }
         sessionStartedAt = System.currentTimeMillis()
-        startProofIfRequested(program)
+        startProofIfRequested(signal)
         when (outputSpinner.selectedItemPosition) {
-            0 -> startScreen(program, ScreenPhotophoneMode.SCANLINE_PCM)
-            1 -> startScreen(program, ScreenPhotophoneMode.WHOLE_FRAME_FALLBACK)
-            2 -> startTorch(program)
-            3 -> startUsb(program)
+            0 -> startScreen(signal, ScreenPhotophoneMode.SCANLINE_PCM)
+            1 -> startScreen(signal, ScreenPhotophoneMode.WHOLE_FRAME_FALLBACK)
+            2 -> startTorch(signal)
+            3 -> startUsb(signal, permissionAlreadyGranted = false)
         }
     }
 
-    private fun startScreen(program: OpticalProgram, mode: ScreenPhotophoneMode) {
+    private fun startScreen(signal: OpticalSignal, mode: ScreenPhotophoneMode) {
         busy = false
         running = true
         enterOpticalFullscreen()
         val view = MusicLightView(
             context = this,
-            program = program,
+            program = signal,
             mode = mode,
             modulationGain = (gainSeek.progress + 5) / 100f,
             reverseRows = reverseRowsCheck.isChecked,
@@ -406,52 +444,57 @@ class InvestigationLabActivity : Activity() {
             geometry = selectedGeometry(),
             onProgress = { elapsed ->
                 runOnUiThread {
-                    val loops = if (program.loop && program.durationSeconds > 0.0) {
-                        (elapsed / program.durationSeconds).toLong()
-                    } else 0L
-                    progressText.text = "${formatTime(elapsed)} · loop $loops · ${currentProtocol?.name.orEmpty()}"
+                    val loopNumber = if (signal.loop && signal.durationSeconds > 0.0) {
+                        (elapsed / signal.durationSeconds).toLong() + 1L
+                    } else 1L
+                    val position = if (signal.loop && signal.durationSeconds > 0.0) {
+                        elapsed % signal.durationSeconds
+                    } else elapsed
+                    progressText.text =
+                        "${formatTime(position)} / ${formatTime(signal.durationSeconds)} · payload loop $loopNumber"
                 }
             },
-            onFinished = { runOnUiThread { stopAll("Protocol completed.") } }
+            onFinished = { runOnUiThread { stopAll("Payload transmission completed.") } }
         )
         screenView = view
         setContentView(view)
-        status("${currentProtocol?.name} is transmitting into the enclosed receiver. Double-tap to stop.")
+        status("${signal.label} is transmitting through light. Double-tap to stop.")
     }
 
-    private fun startTorch(program: OpticalProgram) {
-        val protocol = currentProtocol
-        if ((protocol?.maximumUsefulOutputHz ?: 0) > 20) {
-            status("Torch mode preserves only the slow envelope of this protocol; use scanline or USB for the full waveform.")
-        }
+    private fun startTorch(signal: OpticalSignal) {
+        status(
+            "Torch output is limited to roughly 40 updates/s, so it carries a slow sampled envelope. " +
+                "Use scanline or USB for the complete high-rate carrier."
+        )
         runCatching {
             TorchLoopEngine(
                 context = this,
-                program = program,
+                program = signal,
                 updateRateHz = 40,
                 modulationGain = (gainSeek.progress + 5) / 100f,
                 onStatus = { message -> runOnUiThread { status(message) } },
-                onFinished = { runOnUiThread { stopAll("Torch protocol ended.") } }
+                onFinished = { runOnUiThread { stopAll("Torch payload ended.") } }
             ).also {
                 torchEngine = it
                 busy = false
                 running = true
                 it.start()
             }
-        }.onFailure { error -> fail("Torch protocol failed: ${error.message}") }
+        }.onFailure { error -> fail("Torch output failed: ${error.message}") }
     }
 
-    private fun startUsb(program: OpticalProgram) {
-        val engine = UsbBulkPcmEngine(
+    private fun startUsb(signal: OpticalSignal, permissionAlreadyGranted: Boolean) {
+        val engine = usbEngine ?: UsbBulkPcmEngine(
             this,
-            program,
+            signal,
             onStatus = { message -> runOnUiThread { status(message) } },
-            onFinished = { runOnUiThread { stopAll("USB protocol ended.") } }
+            onFinished = { runOnUiThread { stopAll("USB payload ended.") } }
         )
         val target = engine.findTarget()
             ?: return fail("No USB device with a bulk OUT endpoint was detected.")
-        if (!engine.hasPermission(target)) {
+        if (!permissionAlreadyGranted && !engine.hasPermission(target)) {
             usbEngine = engine
+            pendingSignal = signal
             status("Requesting permission for ${target.description}…")
             engine.requestPermission(target, usbPermissionIntent())
             return
@@ -459,15 +502,16 @@ class InvestigationLabActivity : Activity() {
         usbEngine = engine
         busy = false
         running = true
+        progressText.text = "USB optical waveform: 48,000 samples/s · ${signal.label}"
         runCatching { engine.start(target) }
-            .onFailure { error -> fail("USB protocol failed: ${error.message}") }
+            .onFailure { error -> fail("USB payload output failed: ${error.message}") }
     }
 
-    private fun startProofIfRequested(program: OpticalProgram) {
+    private fun startProofIfRequested(signal: OpticalSignal) {
         if (!proofCheck.isChecked) return
         val recorder = ProofRecorder(
             context = this,
-            sourceProgram = program,
+            sourceProgram = signal,
             onStatus = { message -> runOnUiThread { status(message) } },
             onComplete = { result ->
                 runOnUiThread {
@@ -488,6 +532,32 @@ class InvestigationLabActivity : Activity() {
         recorder.start()
     }
 
+    private fun exportHistoricalSchedule() {
+        val seed = seedInput.text.toString().toLongOrNull() ?: System.currentTimeMillis()
+        val protocol = InvestigationSignalFactory.create(
+            index = 9,
+            text = "",
+            fileBytes = null,
+            fileName = null,
+            loop = false,
+            seed = seed
+        )
+        val schedule = protocol.eventSchedule ?: return fail("Schedule creation failed.")
+        val location = saveText(
+            fileName = "${schedule.name}_${schedule.seed}.csv",
+            mimeType = "text/csv",
+            text = schedule.toCsv()
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Historical SRI schedule exported")
+            .setMessage(
+                "Saved to:\n$location\n\n" +
+                    "This declassified protocol did not encode arbitrary text or files. The randomized condition itself was the experimental variable: null, 6 Hz or 16 Hz. Use any of the seven carriers above to encode your chosen payload."
+            )
+            .setPositiveButton("CLOSE", null)
+            .show()
+    }
+
     private fun stopAll(message: String) {
         screenView?.stop()
         screenView = null
@@ -497,38 +567,71 @@ class InvestigationLabActivity : Activity() {
         usbEngine = null
         proofRecorder?.stop()
         proofRecorder = null
-        val protocol = currentProtocol
+
+        val signal = currentSignal ?: pendingSignal
+        val prepared = currentPrepared
         val elapsed = if (sessionStartedAt == 0L) 0L else System.currentTimeMillis() - sessionStartedAt
-        if (protocol != null && sessionStartedAt != 0L) {
-            logSession(protocol, outputSpinner.selectedItem.toString(), "elapsed_ms=$elapsed")
+        if (signal != null && sessionStartedAt != 0L) {
+            logSession(signal, prepared, outputSpinner.selectedItem.toString(), elapsed)
         }
+
+        currentSignal = null
+        pendingSignal = null
+        currentPrepared = null
+        signal?.close()
         running = false
         busy = false
-        pendingProgram = null
         sessionStartedAt = 0L
         exitOpticalFullscreen()
         setContentView(controlView)
-        progressText.text = "No protocol running."
-        startButton.text = "START CONTROLLED LAB RUN"
+        progressText.text = "No payload running."
+        startButton.text = "ENCODE MY PAYLOAD AND START LIGHT"
         status(message)
     }
 
-    private fun logSession(protocol: InvestigationProtocol, output: String, note: String) {
+    private fun logSession(
+        signal: OpticalSignal,
+        prepared: PreparedPayload?,
+        output: String,
+        elapsedMs: Long
+    ) {
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())
         val line = buildString {
-            append("timestamp,protocol,evidence_layer,output,loop,note\n")
-            append(timestamp).append(',')
-                .append(csv(protocol.name)).append(',')
-                .append(protocol.evidenceLayer.name).append(',')
+            append("timestamp,payload_name,payload_bytes,sha256,carrier,output,loop,duration_seconds,elapsed_ms\n")
+            append(csv(timestamp)).append(',')
+                .append(csv(prepared?.originalName ?: "typed-or-generated")).append(',')
+                .append(prepared?.originalLength ?: 0L).append(',')
+                .append(csv(prepared?.sha256Hex ?: "")).append(',')
+                .append(csv(signal.label)).append(',')
                 .append(csv(output)).append(',')
-                .append(loopCheck.isChecked).append(',')
-                .append(csv(note)).append('\n')
+                .append(signal.loop).append(',')
+                .append(signal.durationSeconds).append(',')
+                .append(elapsedMs).append('\n')
         }
         saveText(
-            fileName = "LightCode_Lab_Session_${System.currentTimeMillis()}.csv",
+            fileName = "LightCode_Payload_Session_${System.currentTimeMillis()}.csv",
             mimeType = "text/csv",
             text = line
         )
+    }
+
+    private fun researchMap(): String = buildString {
+        append("WHAT IS ACTUALLY ENCODED\n\n")
+        append("The payload is exactly the UTF-8 text you type or the raw bytes of the file you upload. The historical or experimental method is only the carrier.\n\n")
+        append("DISK-BACKED CONTAINER\n\n")
+        append("Magic + version + UTF-8 filename + original 64-bit length + whole-file SHA-256 + 64 KiB block size + block count. Every block contains its index, length, raw payload bytes and CRC32. No app-defined total-size ceiling is imposed.\n\n")
+        append("AVAILABLE CARRIERS\n\n")
+        append("• Manchester: self-clocking exact data\n")
+        append("• 4-FSK: two payload bits per symbol\n")
+        append("• 16-position PPM: four payload bits per timed pulse window\n")
+        append("• PRBS-127 spread: correlation-assisted weak-signal payload\n")
+        append("• Gold-code spread: deterministic code identity\n")
+        append("• Chirp spread: up/down chirps represent payload bits\n")
+        append("• Kirlian-timing 4-FSK: exact payload with a separately labeled fringe-inspired 37 Hz gate\n\n")
+        append("DECLASSIFIED SRI STROBE\n\n")
+        append("The recovered SRI design randomized null, 6 Hz and 16 Hz trial conditions. It did not carry arbitrary messages. The lab preserves it as a CSV schedule export rather than pretending those frequencies were a secret file format.\n\n")
+        append("RECONSTRUCTION\n\n")
+        append("The transmitter now produces recoverable framed data. A matching microphone/camera decoder is still required to reconstruct the original file after optical transmission.")
     }
 
     private fun saveText(fileName: String, mimeType: String, text: String): String {
@@ -558,23 +661,6 @@ class InvestigationLabActivity : Activity() {
             file.absolutePath
         }
     }
-
-    private fun researchMap(): String = buildString {
-        append("DECLASSIFIED\n")
-        append("• MKULTRA records establish a broad program involving drugs, hypnosis and behavior research, but the surviving files located in this search did not reveal a documented MKULTRA optical-data transmitter.\n")
-        append("• A later CIA/SRI program documented randomized 0, 6 and 16 Hz remote-strobe trials with EEG monitoring. The app preserves the design as a schedule export only.\n\n")
-        append("ESTABLISHED ENGINEERING\n")
-        append("• Manchester coding, PPM, PRBS, Barker codes, Gold-like sequences, chirps, optical camera communication and rolling-shutter channels.\n")
-        append("• Photoacoustic music and data are supported by modulated-light experiments using dark absorbers.\n\n")
-        append("FRONTIER\n")
-        append("• Multicarrier phase fingerprints, correlation-assisted focusing and adaptive channel probing.\n\n")
-        append("REPORTED / FRINGE\n")
-        append("• Declassified CIA holdings include reports on Kirlian photography and Soviet psychoenergetic devices. The Kirlian mode here copies only pulse timing into light; it is not a high-voltage corona generator.\n")
-        append("• Witness reports of hollow beams, source-less luminous interiors and structured colored fields are treated as geometry inspiration, not as verified hardware specifications.\n\n")
-        append("The clone never hides the active protocol and does not include covert human-targeting functions.")
-    }
-
-    private fun csv(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
     private fun selectedColor(): LightColorMode = when (colorSpinner.selectedItemPosition) {
         1 -> LightColorMode.RED
@@ -624,9 +710,8 @@ class InvestigationLabActivity : Activity() {
         }
     }
 
-    private fun hasMicrophonePermission(): Boolean =
-        Build.VERSION.SDK_INT < 23 ||
-            checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(permission: String): Boolean =
+        Build.VERSION.SDK_INT < 23 || checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -634,14 +719,11 @@ class InvestigationLabActivity : Activity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_MIC) {
-            val program = pendingProgram
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && program != null) {
-                startProgram(program)
-            } else {
-                fail("Microphone permission was denied, so receiver recording could not start.")
-            }
-        }
+        if (requestCode != REQUEST_RUNTIME_PERMISSIONS) return
+        val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        val signal = pendingSignal
+        if (allGranted && signal != null) startSignal(signal)
+        else fail("A required microphone or camera permission was denied.")
     }
 
     private fun enterOpticalFullscreen() {
@@ -681,15 +763,45 @@ class InvestigationLabActivity : Activity() {
         return uri.lastPathSegment ?: "payload.bin"
     }
 
-    private fun formatTime(seconds: Double): String {
-        val total = seconds.toLong().coerceAtLeast(0L)
-        return "%d:%02d".format(total / 60L, total % 60L)
+    private fun displaySize(uri: Uri): Long? {
+        contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) return cursor.getLong(0)
+        }
+        return null
     }
+
+    private fun formatBytes(bytes: Long): String {
+        if (bytes < 1_024L) return "$bytes B"
+        val units = arrayOf("KiB", "MiB", "GiB", "TiB")
+        var value = bytes.toDouble()
+        var unit = -1
+        while (value >= 1_024.0 && unit < units.lastIndex) {
+            value /= 1_024.0
+            unit++
+        }
+        return "%.2f %s".format(value, units[unit.coerceAtLeast(0)])
+    }
+
+    private fun formatTime(seconds: Double): String {
+        if (!seconds.isFinite()) return "unknown"
+        val total = seconds.toLong().coerceAtLeast(0L)
+        val hours = total / 3_600L
+        val minutes = (total % 3_600L) / 60L
+        val secs = total % 60L
+        return if (hours > 0L) "%d:%02d:%02d".format(hours, minutes, secs)
+        else "%d:%02d".format(minutes, secs)
+    }
+
+    private fun csv(value: String): String = "\"${value.replace("\"", "\"\"")}\""
 
     private fun fail(message: String) {
         busy = false
         running = false
-        pendingProgram = null
+        pendingSignal?.close()
+        pendingSignal = null
+        currentSignal = null
+        currentPrepared = null
+        startButton.text = "ENCODE MY PAYLOAD AND START LIGHT"
         status(message)
     }
 
@@ -712,7 +824,7 @@ class InvestigationLabActivity : Activity() {
         setTextColor(Color.WHITE)
         setBackgroundColor(0xFF333333.toInt())
         setOnClickListener { action() }
-        val parameters = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54))
+        val parameters = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56))
         parameters.setMargins(0, dp(8), 0, dp(4))
         layoutParams = parameters
     }
@@ -739,13 +851,15 @@ class InvestigationLabActivity : Activity() {
         torchEngine?.stop()
         usbEngine?.stop()
         proofRecorder?.stop()
+        currentSignal?.close()
+        pendingSignal?.close()
         runCatching { unregisterReceiver(usbPermissionReceiver) }
         super.onDestroy()
     }
 
     companion object {
         private const val REQUEST_FILE = 5101
-        private const val REQUEST_MIC = 5102
+        private const val REQUEST_RUNTIME_PERMISSIONS = 5102
         private const val ACTION_USB_PERMISSION = "com.vhanma.lightcode.investigation.USB_PERMISSION"
     }
 }
