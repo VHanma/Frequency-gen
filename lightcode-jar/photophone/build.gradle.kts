@@ -32,11 +32,22 @@ android {
     }
 }
 
-// The universal payload implementation is intentionally kept as one readable laboratory source
-// file. This pre-compile normalization fixes Kotlin visibility inference and locks the first
-// protocol version to a stable FEC format across every loop pass.
+// Keep only the canonical unlimited ULP3 implementation. Earlier experimental files may be
+// restored by Gradle source caches, so remove those duplicates before every Kotlin compilation.
 val normalizeUniversalPayloadSources by tasks.registering {
     doLast {
+        listOf(
+            "src/main/java/com/vhanma/lightcode/photophone/StreamingOpticalEngines.kt",
+            "src/main/java/com/vhanma/lightcode/photophone/UniversalPayloadEncoderActivity.kt",
+            "src/main/java/com/vhanma/lightcode/photophone/StreamingPayloadEngines.kt",
+            "src/main/java/com/vhanma/lightcode/photophone/StreamingPayloadLightView.kt",
+            "src/main/java/com/vhanma/lightcode/photophone/UniversalPayloadCarrier.kt",
+            "src/main/java/com/vhanma/lightcode/photophone/UniversalPayloadStream.kt"
+        ).forEach { stalePath ->
+            val stale = file(stalePath)
+            if (stale.exists()) stale.delete()
+        }
+
         val streamFile = file(
             "src/main/java/com/vhanma/lightcode/photophone/UniversalPayloadStreaming.kt"
         )
