@@ -20,6 +20,14 @@ enum class BeamLabMode(val label: String, val description: String) {
         "ELF Beam",
         "ELF-rate envelope carried inside a directional ultrasonic parametric beam. The beam provides privacy; the low-rate envelope rides inside it."
     ),
+    DUAL_PUMP_ELF(
+        "Dual-Pump ELF Beam",
+        "Two nearby ultrasonic pump frequencies are separated by the selected ELF rate. Their nonlinear overlap produces that difference-frequency pattern while preserving the high-frequency beam geometry."
+    ),
+    RUSSIAN_SSB_BEAM(
+        "Russian SSB Beam",
+        "Precompensated envelope plus quadrature suppressed-sideband ultrasonic modulation inspired by Russian parametric-loudspeaker patent RU2569914C2."
+    ),
     CROSSED_BEAM_FOCUS(
         "Crossed-Beam Focus",
         "Left output is an ultrasonic carrier and right output is a suppressed-carrier speech sideband. Aim two emitters so audible reconstruction is strongest where the beams overlap."
@@ -91,14 +99,14 @@ class BeamLabAudioTransmitter {
         stop()
         stopped.set(false)
 
-        val stereo = true
-        val (track, sampleRate) = createBestTrack(requestedSampleRate, preferredDevice, stereo)
+        val (track, sampleRate) = createBestTrack(requestedSampleRate, preferredDevice, true)
         activeTrack = track
         val carrier = if (mode == BeamLabMode.SWEET_SPOT_XTC) 0f else DspMath.clampCarrier(sampleRate, requestedCarrierHz)
-        val lowPass = DspMath.LowPass(sampleRate, if (mode == BeamLabMode.FREY_CODEC_ACOUSTIC) 2400f else 3800f)
+        val narrowSpeech = mode == BeamLabMode.FREY_CODEC_ACOUSTIC || mode == BeamLabMode.RUSSIAN_SSB_BEAM
+        val lowPass = DspMath.LowPass(sampleRate, if (narrowSpeech) 2800f else 3800f)
         val highPass = DspMath.HighPass(sampleRate, 180f)
-        val deEmphasis1 = DspMath.LowPass(sampleRate, 1400f)
-        val deEmphasis2 = DspMath.LowPass(sampleRate, 1400f)
+        val preComp1 = DspMath.LowPass(sampleRate, 1600f)
+        val preComp2 = DspMath.LowPass(sampleRate, 1600f)
         val sourceStep = pcm.sampleRate.toDouble() / sampleRate
         val totalFrames = (pcm.samples.size / sourceStep).toLong().coerceAtLeast(1L)
         val block = FloatArray(BLOCK_FRAMES * 2)
@@ -123,6 +131,7 @@ class BeamLabAudioTransmitter {
         var sourcePos = 0.0
         var outputFrame = 0L
         var phase = 0.0
+        var phase2 = 0.0
         var waveformCounter = 0
 
         val staticWeights = if (mode == BeamLabMode.BRIGHT_DARK_BUBBLE && carrier > 0f) {
@@ -181,6 +190,29 @@ class BeamLabAudioTransmitter {
                             phase += 2.0 * PI * carrier / sampleRate
                         }
 
+                        BeamLabMode.DUAL_PUMP_ELF -> {
+                            val f1 = (carrier - safeElfRate * 0.5f).coerceAtLeast(1_000f)
+                            val f2 = (carrier + safeElfRate * 0.5f).coerceAtMost(sampleRate / 2f - 500f)
+                            val envelope = sqrt((1f + safePresence * voice).coerceIn(0.02f, 1.98f))
+                            val steer1 = steeringPhase(f1.toDouble(), safeSpacing, safeTarget.toDouble())
+                            val steer2 = steeringPhase(f2.toDouble(), safeSpacing, safeTarget.toDouble())
+                            left = cos(phase + steer1 * 0.5).toFloat() * envelope
+                            right = cos(phase2 + steer2 * 0.5).toFloat() * envelope
+                            phase += 2.0 * PI * f1 / sampleRate
+                            phase2 += 2.0 * PI * f2 / sampleRate
+                        }
+
+                        BeamLabMode.RUSSIAN_SSB_BEAM -> {
+                            val smoothed = preComp2.process(preComp1.process(voice))
+                            val envelope = sqrt((0.56f + 0.40f * safePresence * smoothed).coerceIn(0.02f, 1.20f))
+                            val precomp = (envelope - sqrt(0.56f)).coerceIn(-1f, 1f)
+                            hilbert.process(precomp, iq)
+                            val steer = steeringPhase(carrier.toDouble(), safeSpacing, safeTarget.toDouble())
+                            left = iq[0] * cos(phase).toFloat() - iq[1] * sin(phase).toFloat()
+                            right = iq[0] * cos(phase + steer).toFloat() - iq[1] * sin(phase + steer).toFloat()
+                            phase += 2.0 * PI * carrier / sampleRate
+                        }
+
                         BeamLabMode.CROSSED_BEAM_FOCUS -> {
                             hilbert.process(voice * safePresence, iq)
                             left = cos(phase).toFloat()
@@ -206,7 +238,7 @@ class BeamLabAudioTransmitter {
                         }
 
                         BeamLabMode.FREY_CODEC_ACOUSTIC -> {
-                            val emphasized = deEmphasis2.process(deEmphasis1.process(voice))
+                            val emphasized = preComp2.process(preComp1.process(voice))
                             val biased = (0.55f + emphasized * 0.42f * safePresence).coerceIn(0.02f, 1.20f)
                             val rooted = sqrt(biased)
                             val centered = (rooted - sqrt(0.55f)).coerceIn(-1f, 1f)
@@ -225,6 +257,7 @@ class BeamLabAudioTransmitter {
                         }
                     }
                     if (phase >= 2.0 * PI || phase <= -2.0 * PI) phase %= 2.0 * PI
+                    if (phase2 >= 2.0 * PI || phase2 <= -2.0 * PI) phase2 %= 2.0 * PI
 
                     block[i * 2] = (left * outputGain * fade).coerceIn(-0.96f, 0.96f)
                     block[i * 2 + 1] = (right * outputGain * fade).coerceIn(-0.96f, 0.96f)
@@ -308,9 +341,7 @@ class BeamLabAudioTransmitter {
             buffer[write] = v
             write = (write + 1) % buffer.size
             val cancel = delayed * crossGain
-            val left = v - cancel
-            val right = v - cancel
-            return left to right
+            return (v - cancel) to (v - cancel)
         }
     }
 
