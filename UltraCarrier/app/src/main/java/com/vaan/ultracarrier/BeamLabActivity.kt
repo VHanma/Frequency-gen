@@ -216,23 +216,43 @@ private fun BeamScreen(
                 }
             }
 
-            if (state.beamMode == BeamLabMode.ELF_BEAM) {
-                ControlCard("ELF inside the beam") {
-                    Text("Envelope ${"%.2f".format(state.elfRateHz)} Hz", fontWeight = FontWeight.Bold)
+            if (state.beamMode == BeamLabMode.ELF_BEAM || state.beamMode == BeamLabMode.DUAL_PUMP_ELF) {
+                ControlCard(if (state.beamMode == BeamLabMode.DUAL_PUMP_ELF) "ELF pump separation" else "ELF inside the beam") {
+                    Text("ELF ${"%.2f".format(state.elfRateHz)} Hz", fontWeight = FontWeight.Bold)
                     Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 0.5f..40f)
-                    Text("Depth ${(state.elfDepth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
-                    Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.95f)
-                    Text("The low-rate pattern modulates the encoded voice while the ultrasonic carrier supplies directionality.", color = Color(0xFFA5C8BE))
+                    if (state.beamMode == BeamLabMode.ELF_BEAM) {
+                        Text("Depth ${(state.elfDepth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+                        Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.95f)
+                        Text("The selected ELF rate modulates the encoded voice envelope while the ultrasonic carrier supplies directionality.", color = Color(0xFFA5C8BE))
+                    } else {
+                        Text("The two ultrasonic pump carriers are separated by exactly this frequency. Their nonlinear overlap is the experiment.", color = Color(0xFFA5C8BE))
+                    }
                 }
             }
 
-            if (state.beamMode in setOf(BeamLabMode.ELF_BEAM, BeamLabMode.BRIGHT_DARK_BUBBLE, BeamLabMode.BEAM_LOCK, BeamLabMode.FREY_CODEC_ACOUSTIC)) {
+            if (state.beamMode in setOf(
+                    BeamLabMode.ELF_BEAM,
+                    BeamLabMode.DUAL_PUMP_ELF,
+                    BeamLabMode.RUSSIAN_SSB_BEAM,
+                    BeamLabMode.BRIGHT_DARK_BUBBLE,
+                    BeamLabMode.BEAM_LOCK,
+                    BeamLabMode.FREY_CODEC_ACOUSTIC
+                )
+            ) {
                 ControlCard("Beam geometry") {
                     Text("Target ${state.targetAngleDeg.roundToInt()}°", fontWeight = FontWeight.Bold)
                     Slider(value = state.targetAngleDeg, onValueChange = onTarget, valueRange = -60f..60f)
                     Text("Transducer spacing ${"%.1f".format(state.spacingMm)} mm", fontWeight = FontWeight.Bold)
                     Slider(value = state.spacingMm, onValueChange = onSpacing, valueRange = 1f..50f)
                 }
+            }
+
+            if (state.beamMode == BeamLabMode.DUAL_PUMP_ELF) {
+                InfoCard("Russian dual-pump principle", "Two close ultrasonic pumps are generated on separate channels. Their frequency spacing equals the selected ELF value. This borrows the difference-frequency parametric-radiation idea used in Russian acoustic patents.")
+            }
+
+            if (state.beamMode == BeamLabMode.RUSSIAN_SSB_BEAM) {
+                InfoCard("Russian SSB parametric path", "Voice is bandwidth-limited, precompensated with a square-root envelope, converted to an analytic signal, then quadrature-modulated onto the steered ultrasonic carrier.")
             }
 
             if (state.beamMode == BeamLabMode.BRIGHT_DARK_BUBBLE) {
@@ -284,7 +304,7 @@ private fun BeamScreen(
         }
 
         state.beamReport?.let { r ->
-            InfoCard("Active ${r.mode.label}", "${r.sampleRate} Hz output • carrier ${r.carrierHz.roundToInt()} Hz • target ${r.targetAngleDeg.roundToInt()}° • null ${r.nullAngleDeg.roundToInt()}° • route ${r.routeName}")
+            InfoCard("Active ${r.mode.label}", "${r.sampleRate} Hz output • carrier ${r.carrierHz.roundToInt()} Hz • ELF ${"%.2f".format(r.elfRateHz)} Hz • target ${r.targetAngleDeg.roundToInt()}° • null ${r.nullAngleDeg.roundToInt()}° • route ${r.routeName}")
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
