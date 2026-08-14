@@ -28,6 +28,22 @@ enum class BeamLabMode(val label: String, val description: String) {
         "Russian SSB Beam",
         "Precompensated envelope plus quadrature suppressed-sideband ultrasonic modulation inspired by Russian parametric-loudspeaker patent RU2569914C2."
     ),
+    US_VIRTUAL_SPEAKER(
+        "US Virtual Speaker",
+        "Steered parametric audio intended to reflect from a wall or ceiling so the apparent source forms at the reflection point."
+    ),
+    US_LOCALIZED_SPOT(
+        "US Localized Spot",
+        "Two complementary ultrasonic outputs are designed to create stronger audible reconstruction where their beams overlap."
+    ),
+    SETI_DRIFT_BEAM(
+        "SETI Drift Beam",
+        "A slowly drifting ultrasonic carrier inspired by frequency-drift signal searches, while the selected voice remains inside the beam."
+    ),
+    CHIRP_SPREAD_BEAM(
+        "Chirp Spread Beam",
+        "A repeating ultrasonic chirp carries the voice through the directional path, inspired by chirp-spread-spectrum communication."
+    ),
     CROSSED_BEAM_FOCUS(
         "Crossed-Beam Focus",
         "Left output is an ultrasonic carrier and right output is a suppressed-carrier speech sideband. Aim two emitters so audible reconstruction is strongest where the beams overlap."
@@ -89,6 +105,8 @@ class BeamLabAudioTransmitter {
         spacingMm: Float,
         beamDitherDeg: Float,
         ditherRateHz: Float,
+        chirpSweepHz: Float,
+        chirpPeriodMs: Float,
         speakerSeparationCm: Float,
         listenerDistanceCm: Float,
         headWidthCm: Float,
@@ -120,6 +138,8 @@ class BeamLabAudioTransmitter {
         val safeSpacing = spacingMm.coerceIn(1f, 50f) / 1000.0
         val safeDither = beamDitherDeg.coerceIn(0f, 12f)
         val safeDitherRate = ditherRateHz.coerceIn(0.03f, 3f)
+        val safeSweep = chirpSweepHz.coerceIn(50f, 12_000f)
+        val safePeriodMs = chirpPeriodMs.coerceIn(2f, 2000f)
         val outputGain = when (listeningPath) {
             ListeningPath.HEADPHONES -> 0.12f + 0.22f * safePresence
             ListeningPath.BONE_CONDUCTION -> 0.14f + 0.24f * safePresence
@@ -177,6 +197,9 @@ class BeamLabAudioTransmitter {
                     ).coerceAtLeast(0f)
                     val elf = (1f - safeElfDepth * 0.5f) + safeElfDepth * 0.5f *
                         (1f + sin(2.0 * PI * safeElfRate * absoluteFrame / sampleRate).toFloat())
+                    val periodFrames = max(1.0, sampleRate * safePeriodMs / 1000.0)
+                    val cycle = (absoluteFrame % periodFrames.toLong()).toDouble() / periodFrames
+                    val triangle = if (cycle < 0.5) cycle * 4.0 - 1.0 else 3.0 - cycle * 4.0
 
                     var left: Float
                     var right: Float
@@ -211,6 +234,43 @@ class BeamLabAudioTransmitter {
                             left = iq[0] * cos(phase).toFloat() - iq[1] * sin(phase).toFloat()
                             right = iq[0] * cos(phase + steer).toFloat() - iq[1] * sin(phase + steer).toFloat()
                             phase += 2.0 * PI * carrier / sampleRate
+                        }
+
+                        BeamLabMode.US_VIRTUAL_SPEAKER -> {
+                            val envelope = sqrt((1f + safePresence * voice).coerceIn(0.02f, 1.98f))
+                            val steer = steeringPhase(carrier.toDouble(), safeSpacing, safeTarget.toDouble())
+                            left = cos(phase).toFloat() * envelope
+                            right = cos(phase + steer).toFloat() * envelope
+                            phase += 2.0 * PI * carrier / sampleRate
+                        }
+
+                        BeamLabMode.US_LOCALIZED_SPOT -> {
+                            hilbert.process(voice * safePresence, iq)
+                            val steer = steeringPhase(carrier.toDouble(), safeSpacing, safeTarget.toDouble())
+                            val upper = iq[0] * cos(phase).toFloat() - iq[1] * sin(phase).toFloat()
+                            val lower = iq[0] * cos(phase + steer).toFloat() + iq[1] * sin(phase + steer).toFloat()
+                            left = upper
+                            right = lower
+                            phase += 2.0 * PI * carrier / sampleRate
+                        }
+
+                        BeamLabMode.SETI_DRIFT_BEAM -> {
+                            val driftHz = safeSweep * 0.5f * sin(2.0 * PI * absoluteFrame / periodFrames).toFloat()
+                            val instantCarrier = (carrier + driftHz).coerceIn(1_000f, sampleRate / 2f - 600f)
+                            val envelope = sqrt((1f + safePresence * voice).coerceIn(0.02f, 1.98f))
+                            val steer = steeringPhase(instantCarrier.toDouble(), safeSpacing, safeTarget.toDouble())
+                            left = cos(phase).toFloat() * envelope
+                            right = cos(phase + steer).toFloat() * envelope
+                            phase += 2.0 * PI * instantCarrier / sampleRate
+                        }
+
+                        BeamLabMode.CHIRP_SPREAD_BEAM -> {
+                            val instantCarrier = (carrier + safeSweep * 0.5f * triangle.toFloat()).coerceIn(1_000f, sampleRate / 2f - 600f)
+                            val envelope = sqrt((1f + safePresence * voice).coerceIn(0.02f, 1.98f))
+                            val steer = steeringPhase(instantCarrier.toDouble(), safeSpacing, safeTarget.toDouble())
+                            left = cos(phase).toFloat() * envelope
+                            right = cos(phase + steer).toFloat() * envelope
+                            phase += 2.0 * PI * instantCarrier / sampleRate
                         }
 
                         BeamLabMode.CROSSED_BEAM_FOCUS -> {
