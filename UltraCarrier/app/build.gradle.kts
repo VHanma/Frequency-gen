@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.thoughtbeam"
+        applicationId = "com.vaan.ultracarrier.voiceofgod"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "8.0.0-thoughtbeam"
+        versionCode = 9
+        versionName = "9.0.0-voice-of-god"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
