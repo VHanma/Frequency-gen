@@ -16,13 +16,13 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="UltraCarrier Voice of God Lab X"
+        android:label="UltraCarrier ELF Beam Lab"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.UltraCarrier">
 
         <activity
-            android:name=".GodXActivity"
+            android:name=".BeamLabActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
