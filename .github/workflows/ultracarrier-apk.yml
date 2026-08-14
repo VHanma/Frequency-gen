@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - ultracarrier-apk-build
+      - world-beam-lab-build
   pull_request:
     branches:
       - main
