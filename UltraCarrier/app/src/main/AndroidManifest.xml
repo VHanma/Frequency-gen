@@ -16,13 +16,13 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="UltraCarrier Voice of God Lab"
+        android:label="UltraCarrier Voice of God Lab X"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.UltraCarrier">
 
         <activity
-            android:name=".GodActivity"
+            android:name=".GodXActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
