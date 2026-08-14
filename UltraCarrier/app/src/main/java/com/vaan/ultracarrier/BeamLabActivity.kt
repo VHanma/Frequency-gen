@@ -148,34 +148,70 @@ private fun BeamScreen(
     val minCarrier = h?.carrierMinHz ?: 13_500f
     val maxCarrier = h?.carrierMaxHz ?: 22_000f
 
+    val geometryModes = setOf(
+        BeamLabMode.ELF_BEAM,
+        BeamLabMode.DUAL_PUMP_ELF,
+        BeamLabMode.RUSSIAN_SSB_BEAM,
+        BeamLabMode.SOVIET_PULSE_BEAM,
+        BeamLabMode.PSYCHOTRONIC_NESTED_BEAM,
+        BeamLabMode.SMIRNOV_MASK_BEAM,
+        BeamLabMode.US_VIRTUAL_SPEAKER,
+        BeamLabMode.US_LOCALIZED_SPOT,
+        BeamLabMode.US_QUIET_ZONE,
+        BeamLabMode.US_VIRTUAL_HEADSET,
+        BeamLabMode.FREY_CODEC_ACOUSTIC,
+        BeamLabMode.US_PULSE_FM_ANALOG,
+        BeamLabMode.SETI_DRIFT_BEAM,
+        BeamLabMode.CHIRP_SPREAD_BEAM,
+        BeamLabMode.BRIGHT_DARK_BUBBLE,
+        BeamLabMode.BEAM_LOCK,
+        BeamLabMode.ALIEN_TIME_REVERSAL,
+        BeamLabMode.ALIEN_HOLOGRAM_FOCUS,
+        BeamLabMode.ALIEN_VORTEX_OAM,
+        BeamLabMode.ALIEN_FREQUENCY_KEY,
+        BeamLabMode.ALIEN_BESSEL_SELF_HEAL,
+        BeamLabMode.ALIEN_QUIET_SHELL,
+        BeamLabMode.ALIEN_DUAL_EAR_FIELD
+    )
+
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("ULTRACARRIER ELF BEAM LAB", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-        Text("Directional-audio experiments first. Lab X and ThoughtBeam remain inside as separate engine families.", color = Color(0xFFA5C8BE))
+        Text("ULTRACARRIER WORLD BEAM LAB", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("American + Russian/Soviet + alien-inspired directional-audio experiments. Lab X and ThoughtBeam remain inside.", color = Color(0xFFA5C8BE))
 
         InfoCard(h?.label ?: "Detecting audio route…", state.status)
 
         ControlCard("Output path") {
-            ListeningPath.entries.forEach { p -> FilterChip(selected = state.listeningPath == p, onClick = { onPath(p) }, label = { Text(p.label) }) }
+            ListeningPath.entries.forEach { p ->
+                FilterChip(selected = state.listeningPath == p, onClick = { onPath(p) }, label = { Text(p.label) })
+            }
         }
 
         ControlCard("Engine family") {
-            BeamFamily.entries.forEach { f -> FilterChip(selected = state.family == f, onClick = { onFamily(f) }, label = { Text(f.label) }) }
+            BeamFamily.entries.forEach { f ->
+                FilterChip(selected = state.family == f, onClick = { onFamily(f) }, label = { Text(f.label) })
+            }
         }
 
         when (state.family) {
             BeamFamily.BEAM_LAB -> ControlCard("Beam experiment") {
-                BeamLabMode.entries.forEach { m -> FilterChip(selected = state.beamMode == m, onClick = { onBeamMode(m) }, label = { Text(m.label) }) }
+                BeamLabMode.entries.forEach { m ->
+                    FilterChip(selected = state.beamMode == m, onClick = { onBeamMode(m) }, label = { Text(m.label) })
+                }
                 Text(state.beamMode.description, color = Color(0xFFA5C8BE))
             }
             BeamFamily.LAB_X -> ControlCard("Lab X experiment") {
-                GodXMode.entries.forEach { m -> FilterChip(selected = state.labXMode == m, onClick = { onLabXMode(m) }, label = { Text(m.label) }) }
+                GodXMode.entries.forEach { m ->
+                    FilterChip(selected = state.labXMode == m, onClick = { onLabXMode(m) }, label = { Text(m.label) })
+                }
                 Text(state.labXMode.description, color = Color(0xFFA5C8BE))
             }
             BeamFamily.THOUGHTBEAM -> ControlCard("ThoughtBeam engine") {
-                ThoughtMode.entries.forEach { m -> FilterChip(selected = state.classicMode == m, onClick = { onClassicMode(m) }, label = { Text(m.label) }) }
+                ThoughtMode.entries.forEach { m ->
+                    FilterChip(selected = state.classicMode == m, onClick = { onClassicMode(m) }, label = { Text(m.label) })
+                }
                 Text(state.classicMode.description, color = Color(0xFFA5C8BE))
             }
         }
@@ -186,6 +222,7 @@ private fun BeamScreen(
             modifier = Modifier.fillMaxWidth().height(130.dp),
             label = { Text("Text to encode") }
         )
+
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = onPrepare, enabled = !state.isBusy, modifier = Modifier.weight(1f)) { Text("Prepare Text") }
             OutlinedButton(onClick = onPick, enabled = !state.isBusy, modifier = Modifier.weight(1f)) { Text("Choose File") }
@@ -198,6 +235,7 @@ private fun BeamScreen(
                 Switch(checked = state.loopEnabled, onCheckedChange = onLoop)
             }
         }
+
         Button(onClick = onPlay, enabled = state.loadedAudio != null && !state.isBusy, modifier = Modifier.fillMaxWidth().height(58.dp)) {
             Text(if (state.loopEnabled) "PLAY & LOOP" else "PLAY", fontWeight = FontWeight.Black)
         }
@@ -212,33 +250,30 @@ private fun BeamScreen(
                 ControlCard("Ultrasonic carrier") {
                     Text("${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
                     Slider(value = state.carrierHz.coerceIn(minCarrier, maxCarrier), onValueChange = onCarrier, valueRange = minCarrier..maxCarrier)
-                    Text(if (state.listeningPath == ListeningPath.EXTERNAL_ARRAY) "External array path selected." else "Phone/headset playback is an encoding preview; real narrow-beam behavior requires an ultrasonic array.", color = Color(0xFFA5C8BE))
-                }
-            }
-
-            if (state.beamMode == BeamLabMode.ELF_BEAM || state.beamMode == BeamLabMode.DUAL_PUMP_ELF) {
-                ControlCard(if (state.beamMode == BeamLabMode.DUAL_PUMP_ELF) "ELF pump separation" else "ELF inside the beam") {
-                    Text("ELF ${"%.2f".format(state.elfRateHz)} Hz", fontWeight = FontWeight.Bold)
-                    Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 0.5f..40f)
-                    if (state.beamMode == BeamLabMode.ELF_BEAM) {
-                        Text("Depth ${(state.elfDepth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
-                        Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.95f)
-                        Text("The selected ELF rate modulates the encoded voice envelope while the ultrasonic carrier supplies directionality.", color = Color(0xFFA5C8BE))
-                    } else {
-                        Text("The two ultrasonic pump carriers are separated by exactly this frequency. Their nonlinear overlap is the experiment.", color = Color(0xFFA5C8BE))
-                    }
+                    Text(
+                        if (state.listeningPath == ListeningPath.EXTERNAL_ARRAY) "External array path selected."
+                        else "Phone/headset playback is an encoding preview; true narrow-beam behavior needs an ultrasonic array.",
+                        color = Color(0xFFA5C8BE)
+                    )
                 }
             }
 
             if (state.beamMode in setOf(
                     BeamLabMode.ELF_BEAM,
                     BeamLabMode.DUAL_PUMP_ELF,
-                    BeamLabMode.RUSSIAN_SSB_BEAM,
-                    BeamLabMode.BRIGHT_DARK_BUBBLE,
-                    BeamLabMode.BEAM_LOCK,
-                    BeamLabMode.FREY_CODEC_ACOUSTIC
+                    BeamLabMode.SOVIET_PULSE_BEAM,
+                    BeamLabMode.PSYCHOTRONIC_NESTED_BEAM
                 )
             ) {
+                ControlCard("Low-rate pattern") {
+                    Text("Rate ${"%.2f".format(state.elfRateHz)} Hz", fontWeight = FontWeight.Bold)
+                    Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 0.5f..40f)
+                    Text("Depth ${(state.elfDepth * 100).roundToInt()}%", fontWeight = FontWeight.Bold)
+                    Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.95f)
+                }
+            }
+
+            if (state.beamMode in geometryModes) {
                 ControlCard("Beam geometry") {
                     Text("Target ${state.targetAngleDeg.roundToInt()}°", fontWeight = FontWeight.Bold)
                     Slider(value = state.targetAngleDeg, onValueChange = onTarget, valueRange = -60f..60f)
@@ -247,24 +282,16 @@ private fun BeamScreen(
                 }
             }
 
-            if (state.beamMode == BeamLabMode.DUAL_PUMP_ELF) {
-                InfoCard("Russian dual-pump principle", "Two close ultrasonic pumps are generated on separate channels. Their frequency spacing equals the selected ELF value. This borrows the difference-frequency parametric-radiation idea used in Russian acoustic patents.")
-            }
-
-            if (state.beamMode == BeamLabMode.RUSSIAN_SSB_BEAM) {
-                InfoCard("Russian SSB parametric path", "Voice is bandwidth-limited, precompensated with a square-root envelope, converted to an analytic signal, then quadrature-modulated onto the steered ultrasonic carrier.")
-            }
-
-            if (state.beamMode == BeamLabMode.BRIGHT_DARK_BUBBLE) {
+            if (state.beamMode in setOf(BeamLabMode.BRIGHT_DARK_BUBBLE, BeamLabMode.US_QUIET_ZONE)) {
                 ControlCard("Dark-zone direction") {
                     Text("Null ${state.nullAngleDeg.roundToInt()}°", fontWeight = FontWeight.Bold)
                     Slider(value = state.nullAngleDeg, onValueChange = onNull, valueRange = -75f..75f)
-                    Text("The two output weights are solved to reinforce the target direction while cancelling the selected null direction.", color = Color(0xFFA5C8BE))
+                    Text("Target direction is reinforced while the selected neighboring direction is suppressed.", color = Color(0xFFA5C8BE))
                 }
             }
 
-            if (state.beamMode == BeamLabMode.BEAM_LOCK) {
-                ControlCard("Beam lock dither") {
+            if (state.beamMode in setOf(BeamLabMode.BEAM_LOCK, BeamLabMode.ALIEN_QUIET_SHELL)) {
+                ControlCard("Dynamic steering") {
                     Text("Dither ±${"%.1f".format(state.beamDitherDeg)}°", fontWeight = FontWeight.Bold)
                     Slider(value = state.beamDitherDeg, onValueChange = onDither, valueRange = 0f..12f)
                     Text("Rate ${"%.2f".format(state.ditherRateHz)} Hz", fontWeight = FontWeight.Bold)
@@ -272,12 +299,8 @@ private fun BeamScreen(
                 }
             }
 
-            if (state.beamMode == BeamLabMode.CROSSED_BEAM_FOCUS) {
-                InfoCard("Two-beam output", "Left channel carries the ultrasonic reference carrier. Right channel carries the suppressed-carrier speech sideband. Feed them to two independently aimed ultrasonic emitters and overlap the beams at the listening zone.")
-            }
-
-            if (state.beamMode == BeamLabMode.SWEET_SPOT_XTC) {
-                ControlCard("Sweet-spot geometry") {
+            if (state.beamMode in setOf(BeamLabMode.SWEET_SPOT_XTC, BeamLabMode.US_VIRTUAL_HEADSET, BeamLabMode.ALIEN_DUAL_EAR_FIELD)) {
+                ControlCard("Listener geometry") {
                     Text("Speaker separation ${state.speakerSeparationCm.roundToInt()} cm", fontWeight = FontWeight.Bold)
                     Slider(value = state.speakerSeparationCm, onValueChange = onSpeakerSeparation, valueRange = 4f..200f)
                     Text("Listener distance ${state.listenerDistanceCm.roundToInt()} cm", fontWeight = FontWeight.Bold)
@@ -285,6 +308,26 @@ private fun BeamScreen(
                     Text("Head width ${"%.1f".format(state.headWidthCm)} cm", fontWeight = FontWeight.Bold)
                     Slider(value = state.headWidthCm, onValueChange = onHeadWidth, valueRange = 10f..24f)
                 }
+            }
+
+            when (state.beamMode) {
+                BeamLabMode.DUAL_PUMP_ELF -> InfoCard("Russian dual-pump path", "Two ultrasonic pumps are separated by the selected low frequency. The app outputs the pump pair on separate channels.")
+                BeamLabMode.RUSSIAN_SSB_BEAM -> InfoCard("Russian SSB path", "Voice is bandwidth-limited, square-root precompensated, converted to an analytic signal, then quadrature-modulated onto the steered carrier.")
+                BeamLabMode.CROSSED_BEAM_FOCUS -> InfoCard("Crossed-beam output", "Left carries the ultrasonic reference. Right carries the speech sideband. Independent emitters are intended to overlap at the listening zone.")
+                BeamLabMode.FREY_CODEC_ACOUSTIC -> InfoCard("USAF-inspired codec", "Only the speech preprocessing concept is borrowed here. Output remains acoustic/ultrasonic.")
+                BeamLabMode.US_VIRTUAL_HEADSET -> InfoCard("American virtual-headset path", "Left and right output geometry is calculated from listener distance and head width so two physical emitters can be aimed toward opposite ears.")
+                BeamLabMode.US_QUIET_ZONE -> InfoCard("American quiet-zone path", "Inspired by focused parametric-array patents describing audible and quiet zones using phase-controlled ultrasonic emission regions.")
+                BeamLabMode.SOVIET_PULSE_BEAM,
+                BeamLabMode.PSYCHOTRONIC_NESTED_BEAM,
+                BeamLabMode.SMIRNOV_MASK_BEAM -> InfoCard("Russian/Soviet experimental bank", "These modes translate historical or fringe signal-pattern ideas into ordinary acoustic/ultrasonic modulation; they do not assume the original biological claims are established.")
+                BeamLabMode.ALIEN_TIME_REVERSAL -> InfoCard("Time-reversal seed", "This is a two-channel phase-conjugate prototype. True room-adaptive time reversal would need calibration microphones and more independently driven array elements.")
+                BeamLabMode.ALIEN_HOLOGRAM_FOCUS -> InfoCard("Acoustic hologram seed", "Multiple nearby carrier components receive different phase gradients. A larger multi-element array would turn this into a true spatial hologram.")
+                BeamLabMode.ALIEN_VORTEX_OAM -> InfoCard("OAM vortex seed", "Left/right quadrature forms the two-channel seed of a helical acoustic phase field. Full OAM control needs a ring or 2-D phased array.")
+                BeamLabMode.ALIEN_FREQUENCY_KEY -> InfoCard("Frequency-key field", "Three carrier components use different phase keys. This explores whether overlap geometry can act like an acoustic combination lock.")
+                BeamLabMode.ALIEN_BESSEL_SELF_HEAL -> InfoCard("Bessel seed", "Opposing cone angles are superposed as a small-array seed for Bessel-like field reconstruction after partial obstruction.")
+                BeamLabMode.ALIEN_QUIET_SHELL -> InfoCard("Quiet-shell seed", "The null direction alternates around the target, exploring a bright center surrounded by lower-energy neighboring directions.")
+                BeamLabMode.ALIEN_DUAL_EAR_FIELD -> InfoCard("Dual-ear field", "Separate steered channels target opposite ears with extra phase coding for a more internally located stereo image.")
+                else -> {}
             }
         }
 
@@ -304,7 +347,10 @@ private fun BeamScreen(
         }
 
         state.beamReport?.let { r ->
-            InfoCard("Active ${r.mode.label}", "${r.sampleRate} Hz output • carrier ${r.carrierHz.roundToInt()} Hz • ELF ${"%.2f".format(r.elfRateHz)} Hz • target ${r.targetAngleDeg.roundToInt()}° • null ${r.nullAngleDeg.roundToInt()}° • route ${r.routeName}")
+            InfoCard(
+                "Active ${r.mode.label}",
+                "${r.sampleRate} Hz output • carrier ${r.carrierHz.roundToInt()} Hz • low-rate ${"%.2f".format(r.elfRateHz)} Hz • target ${r.targetAngleDeg.roundToInt()}° • null ${r.nullAngleDeg.roundToInt()}° • route ${r.routeName}"
+            )
         }
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
