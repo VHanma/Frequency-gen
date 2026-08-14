@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.voiceofgodx"
+        applicationId = "com.vaan.ultracarrier.elfbeamlab"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "10.0.0-voice-of-god-x"
+        versionCode = 11
+        versionName = "11.0.0-elf-beam-lab"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
