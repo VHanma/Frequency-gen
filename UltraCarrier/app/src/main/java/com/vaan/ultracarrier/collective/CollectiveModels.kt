@@ -2,7 +2,9 @@ package com.vaan.ultracarrier.collective
 
 import android.net.Uri
 import com.vaan.ultracarrier.audio.BeamLabMode
+import com.vaan.ultracarrier.audio.GodXMode
 import com.vaan.ultracarrier.audio.ListeningPath
+import com.vaan.ultracarrier.audio.ThoughtMode
 import java.io.File
 
 data class StreamInfo(
@@ -21,7 +23,9 @@ sealed interface CollectiveSource {
 
 enum class CollectiveFamily(val label: String) {
     WORLD_BEAM("World Beam"),
-    PERCEPTION_LAB("Perception Lab")
+    PERCEPTION_LAB("Perception Lab"),
+    LAB_X("Lab X Originals"),
+    THOUGHTBEAM("ThoughtBeam Classic")
 }
 
 enum class CollectiveMode(val label: String, val description: String) {
@@ -47,7 +51,7 @@ enum class CollectiveMode(val label: String, val description: String) {
     ),
     MIND_CANVAS(
         "Mind Canvas",
-        "Voice energy drives spatial pitch trajectories and harmonic layers using established pitch-height and size-pitch crossmodal correspondences as imagery cues."
+        "Voice energy drives spatial pitch trajectories and harmonic layers using pitch-height and size-pitch crossmodal correspondences as imagery cues."
     ),
     IMAGE_SEED_GEOMETRY(
         "Image Seed Geometry",
@@ -85,6 +89,8 @@ data class CollectiveConfig(
     val family: CollectiveFamily,
     val worldMode: BeamLabMode,
     val collectiveMode: CollectiveMode,
+    val labXMode: GodXMode,
+    val classicMode: ThoughtMode,
     val listeningPath: ListeningPath,
     val requestedSampleRate: Int,
     val carrierHz: Float,
