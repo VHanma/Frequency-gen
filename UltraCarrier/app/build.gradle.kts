@@ -11,8 +11,8 @@ android {
         applicationId = "com.vaan.ultracarrier.collectivebeamlab"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "14.0.0-collective-beam-lab"
+        versionCode = 15
+        versionName = "15.0.0-collective-originals-restored"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
