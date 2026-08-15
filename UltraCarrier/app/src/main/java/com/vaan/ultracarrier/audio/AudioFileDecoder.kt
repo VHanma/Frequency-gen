@@ -55,72 +55,104 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
     }
 
     private fun decodeWav(input: InputStream): PcmAudio {
-        val bytes = input.readBytes()
-        require(bytes.size >= 44) { "The WAV file is too short or damaged." }
-        require(bytes.size <= MAX_WAV_BYTES) { "WAV file is too large. Trim it below five minutes." }
-        require(isWavHeader(bytes.copyOfRange(0, 12))) { "The WAV header is invalid." }
+        val riffHeader = ByteArray(12)
+        readFully(input, riffHeader)
+        require(isWavHeader(riffHeader)) { "The WAV header is invalid." }
+        val rf64 = String(riffHeader, 0, 4, StandardCharsets.US_ASCII) == "RF64"
 
         var formatTag = 0
         var channels = 0
         var sampleRate = 0
         var bitsPerSample = 0
-        var dataStart = -1
-        var dataSize = 0
-        var position = 12
+        var rf64DataSize: Long? = null
 
-        while (position + 8 <= bytes.size) {
-            val chunkId = String(bytes, position, 4, StandardCharsets.US_ASCII)
-            val chunkSize = littleInt(bytes, position + 4).coerceAtLeast(0)
-            val chunkStart = position + 8
-            if (chunkStart > bytes.size) break
-            val available = min(chunkSize, bytes.size - chunkStart)
+        while (true) {
+            val chunkHeader = ByteArray(8)
+            if (!readFullyOrEof(input, chunkHeader)) break
+            val chunkId = String(chunkHeader, 0, 4, StandardCharsets.US_ASCII)
+            val rawChunkSize = littleUnsignedInt(chunkHeader, 4)
 
             when (chunkId) {
-                "fmt " -> if (available >= 16) {
-                    formatTag = littleShort(bytes, chunkStart)
-                    channels = littleShort(bytes, chunkStart + 2)
-                    sampleRate = littleInt(bytes, chunkStart + 4)
-                    bitsPerSample = littleShort(bytes, chunkStart + 14)
+                "ds64" -> {
+                    val headBytes = min(rawChunkSize, 64L).toInt()
+                    val ds64 = ByteArray(headBytes)
+                    readFully(input, ds64)
+                    if (ds64.size >= 16) rf64DataSize = littleLong(ds64, 8)
+                    skipFully(input, rawChunkSize - headBytes)
+                }
+
+                "fmt " -> {
+                    val headBytes = min(rawChunkSize, 64L).toInt()
+                    val fmt = ByteArray(headBytes)
+                    readFully(input, fmt)
+                    require(fmt.size >= 16) { "The WAV format chunk is incomplete." }
+                    formatTag = littleShort(fmt, 0)
+                    channels = littleShort(fmt, 2)
+                    sampleRate = littleInt(fmt, 4)
+                    bitsPerSample = littleShort(fmt, 14)
+                    skipFully(input, rawChunkSize - headBytes)
                 }
 
                 "data" -> {
-                    dataStart = chunkStart
-                    dataSize = available
-                    break
+                    require(channels in 1..8) { "Unsupported WAV channel count: $channels." }
+                    require(sampleRate in 8_000..384_000) { "Unsupported WAV sample rate: $sampleRate Hz." }
+                    require(formatTag == 1 || formatTag == 3) {
+                        "WAV encoding $formatTag is unsupported. Use PCM or floating-point WAV."
+                    }
+                    val bytesPerSample = (bitsPerSample + 7) / 8
+                    require(bytesPerSample in 1..4) { "Unsupported WAV bit depth: $bitsPerSample-bit." }
+                    val bytesPerFrame = bytesPerSample * channels
+                    val dataBytes = if (rf64 && rawChunkSize == 0xffff_ffffL) {
+                        rf64DataSize ?: error("RF64 WAV is missing its ds64 data-size field.")
+                    } else {
+                        rawChunkSize
+                    }
+
+                    val output = FloatArrayBuilder()
+                    val buffer = ByteArray(STREAM_BUFFER_BYTES + bytesPerFrame)
+                    var carry = 0
+                    var remaining = dataBytes
+
+                    while (remaining > 0L) {
+                        val request = min(STREAM_BUFFER_BYTES.toLong(), remaining).toInt()
+                        val read = input.read(buffer, carry, request)
+                        if (read < 0) break
+                        if (read == 0) continue
+                        remaining -= read.toLong()
+                        val available = carry + read
+                        val completeBytes = available - (available % bytesPerFrame)
+                        var offset = 0
+                        while (offset < completeBytes) {
+                            var sum = 0f
+                            repeat(channels) {
+                                sum += decodeWavSample(buffer, offset, formatTag, bitsPerSample)
+                                offset += bytesPerSample
+                            }
+                            output.add((sum / channels).coerceIn(-1f, 1f))
+                        }
+                        carry = available - completeBytes
+                        if (carry > 0) {
+                            System.arraycopy(buffer, completeBytes, buffer, 0, carry)
+                        }
+                    }
+
+                    val samples = output.toArray()
+                    if (samples.isEmpty()) error("The WAV file contains no complete audio frames.")
+                    removeDcAndNormalize(samples)
+                    return PcmAudio(
+                        samples = samples,
+                        sampleRate = sampleRate,
+                        durationSeconds = samples.size.toDouble() / sampleRate
+                    )
                 }
+
+                else -> skipFully(input, rawChunkSize)
             }
-            position = chunkStart + available + (available and 1)
+
+            if (rawChunkSize and 1L == 1L) skipFully(input, 1L)
         }
 
-        require(channels in 1..8) { "Unsupported WAV channel count: $channels." }
-        require(sampleRate in 8_000..384_000) { "Unsupported WAV sample rate: $sampleRate Hz." }
-        require(dataStart >= 0 && dataSize > 0) { "The WAV file has no audio data chunk." }
-        require(formatTag == 1 || formatTag == 3) {
-            "WAV encoding $formatTag is unsupported. Use PCM or floating-point WAV."
-        }
-
-        val bytesPerSample = (bitsPerSample + 7) / 8
-        require(bytesPerSample in 1..4) { "Unsupported WAV bit depth: $bitsPerSample-bit." }
-        val bytesPerFrame = bytesPerSample * channels
-        val frameCount = min(dataSize / bytesPerFrame, MAX_SECONDS * sampleRate)
-        require(frameCount > 0) { "The WAV file contains no complete audio frames." }
-
-        val output = FloatArray(frameCount)
-        var offset = dataStart
-        for (frame in 0 until frameCount) {
-            var sum = 0f
-            repeat(channels) {
-                sum += decodeWavSample(bytes, offset, formatTag, bitsPerSample)
-                offset += bytesPerSample
-            }
-            output[frame] = (sum / channels).coerceIn(-1f, 1f)
-        }
-        removeDcAndNormalize(output)
-        return PcmAudio(
-            samples = output,
-            sampleRate = sampleRate,
-            durationSeconds = output.size.toDouble() / sampleRate
-        )
+        error("The WAV file has no audio data chunk.")
     }
 
     private fun decodeWavSample(bytes: ByteArray, offset: Int, formatTag: Int, bits: Int): Float {
@@ -168,7 +200,6 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
             var sampleRate = inputFormat.getIntegerOr(MediaFormat.KEY_SAMPLE_RATE, 48_000)
             var channels = inputFormat.getIntegerOr(MediaFormat.KEY_CHANNEL_COUNT, 1)
             var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
-            var maxSamples = MAX_SECONDS * sampleRate
 
             while (!outputEnded) {
                 if (!inputEnded) {
@@ -194,7 +225,6 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
                         sampleRate = format.getIntegerOr(MediaFormat.KEY_SAMPLE_RATE, sampleRate)
                         channels = format.getIntegerOr(MediaFormat.KEY_CHANNEL_COUNT, channels).coerceAtLeast(1)
                         pcmEncoding = format.getIntegerOr(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
-                        maxSamples = MAX_SECONDS * sampleRate
                     }
 
                     MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
@@ -205,14 +235,12 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
                             buffer.position(info.offset)
                             buffer.limit(info.offset + info.size)
                             buffer.order(ByteOrder.nativeOrder())
-                            appendDownmixed(buffer, pcmEncoding, channels, output, maxSamples)
+                            appendDownmixed(buffer, pcmEncoding, channels, output)
                         }
                         decoder.releaseOutputBuffer(outputIndex, false)
                         if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputEnded = true
                     }
                 }
-
-                if (output.size >= maxSamples) error("Audio is longer than $MAX_SECONDS seconds. Trim it and try again.")
             }
 
             val samples = output.toArray()
@@ -230,13 +258,12 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
         buffer: java.nio.ByteBuffer,
         pcmEncoding: Int,
         channels: Int,
-        output: FloatArrayBuilder,
-        maxSamples: Int
+        output: FloatArrayBuilder
     ) {
         when (pcmEncoding) {
             AudioFormat.ENCODING_PCM_FLOAT -> {
                 val floats = buffer.asFloatBuffer()
-                while (floats.remaining() >= channels && output.size < maxSamples) {
+                while (floats.remaining() >= channels) {
                     var sum = 0f
                     repeat(channels) { sum += floats.get() }
                     output.add((sum / channels).coerceIn(-1f, 1f))
@@ -245,7 +272,7 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
 
             AudioFormat.ENCODING_PCM_16BIT -> {
                 val shorts = buffer.asShortBuffer()
-                while (shorts.remaining() >= channels && output.size < maxSamples) {
+                while (shorts.remaining() >= channels) {
                     var sum = 0f
                     repeat(channels) { sum += shorts.get() / 32768f }
                     output.add((sum / channels).coerceIn(-1f, 1f))
@@ -272,6 +299,40 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
         }
     }
 
+    private fun readFully(input: InputStream, buffer: ByteArray) {
+        var offset = 0
+        while (offset < buffer.size) {
+            val read = input.read(buffer, offset, buffer.size - offset)
+            if (read < 0) error("Unexpected end of audio file.")
+            if (read == 0) continue
+            offset += read
+        }
+    }
+
+    private fun readFullyOrEof(input: InputStream, buffer: ByteArray): Boolean {
+        var offset = 0
+        while (offset < buffer.size) {
+            val read = input.read(buffer, offset, buffer.size - offset)
+            if (read < 0) return offset == 0
+            if (read == 0) continue
+            offset += read
+        }
+        return true
+    }
+
+    private fun skipFully(input: InputStream, bytes: Long) {
+        var remaining = bytes.coerceAtLeast(0L)
+        while (remaining > 0L) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0L) {
+                remaining -= skipped
+            } else {
+                if (input.read() < 0) break
+                remaining--
+            }
+        }
+    }
+
     private fun littleShort(bytes: ByteArray, offset: Int): Int =
         (bytes[offset].toInt() and 0xff) or ((bytes[offset + 1].toInt() and 0xff) shl 8)
 
@@ -283,12 +344,19 @@ class AudioFileDecoder(private val contentResolver: ContentResolver) {
             ((bytes[offset + 2].toInt() and 0xff) shl 16) or
             ((bytes[offset + 3].toInt() and 0xff) shl 24)
 
+    private fun littleUnsignedInt(bytes: ByteArray, offset: Int): Long = littleInt(bytes, offset).toLong() and 0xffff_ffffL
+
+    private fun littleLong(bytes: ByteArray, offset: Int): Long {
+        var value = 0L
+        for (i in 0 until 8) value = value or ((bytes[offset + i].toLong() and 0xffL) shl (8 * i))
+        return value
+    }
+
     private fun MediaFormat.getIntegerOr(key: String, fallback: Int): Int =
         if (containsKey(key)) getInteger(key) else fallback
 
     companion object {
         private const val TIMEOUT_US = 10_000L
-        private const val MAX_SECONDS = 300
-        private const val MAX_WAV_BYTES = 160 * 1024 * 1024
+        private const val STREAM_BUFFER_BYTES = 64 * 1024
     }
 }
