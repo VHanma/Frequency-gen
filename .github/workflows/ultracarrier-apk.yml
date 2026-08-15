@@ -5,6 +5,7 @@ on:
     branches:
       - ultracarrier-apk-build
       - world-beam-lab-build
+      - world-beam-lab-no-file-cap
   pull_request:
     branches:
       - main
