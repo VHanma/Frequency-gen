@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.worldbeamlab"
+        applicationId = "com.vaan.ultracarrier.worldbeamlab.nocap"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "12.0.0-world-beam-lab"
+        versionCode = 13
+        versionName = "13.0.0-world-beam-no-cap"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
