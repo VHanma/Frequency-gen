@@ -8,11 +8,11 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.collectivebeamlab"
+        applicationId = "com.vaan.ultracarrier.collectivebeamlab.omega"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "15.0.0-collective-originals-restored"
+        versionCode = 16
+        versionName = "16.0.0-collective-omega-scalar"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
