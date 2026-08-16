@@ -7,14 +7,34 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,12 +42,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vaan.ultracarrier.audio.BeamLabMode
 import com.vaan.ultracarrier.audio.GodXMode
 import com.vaan.ultracarrier.audio.ListeningPath
 import com.vaan.ultracarrier.audio.ThoughtMode
-import com.vaan.ultracarrier.collective.*
+import com.vaan.ultracarrier.collective.CollectiveController
+import com.vaan.ultracarrier.collective.CollectiveFamily
+import com.vaan.ultracarrier.collective.CollectiveMode
+import com.vaan.ultracarrier.collective.CollectiveUiState
+import com.vaan.ultracarrier.collective.ExportFormat
+import com.vaan.ultracarrier.collective.MethodPreset
+import com.vaan.ultracarrier.collective.PresetCatalog
+import com.vaan.ultracarrier.collective.ScalarMode
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -53,12 +82,15 @@ class CollectiveActivity : ComponentActivity() {
                     scopeRate = scopeRate,
                     onText = controller::setText,
                     onPick = { picker.launch(arrayOf("audio/*", "application/octet-stream")) },
-                    onSave = { saver.launch("Collective-${state.family.name}-${selectedModeName(state)}.wav") },
+                    onSaveAs = { saver.launch("Collective-${state.family.name}-${selectedModeName(state)}.wav") },
+                    onSaveDownloads = controller::saveToDownloads,
                     onFamily = controller::setFamily,
                     onWorldMode = controller::setWorldMode,
                     onCollectiveMode = controller::setCollectiveMode,
                     onLabXMode = controller::setLabXMode,
                     onClassicMode = controller::setClassicMode,
+                    onScalarMode = controller::setScalarMode,
+                    onResetPreset = controller::resetPreset,
                     onPath = controller::setPath,
                     onPresence = controller::setPresence,
                     onCarrier = controller::setCarrier,
@@ -96,6 +128,15 @@ private fun selectedModeName(state: CollectiveUiState): String = when (state.fam
     CollectiveFamily.PERCEPTION_LAB -> state.collectiveMode.name
     CollectiveFamily.LAB_X -> state.labXMode.name
     CollectiveFamily.THOUGHTBEAM -> state.classicMode.name
+    CollectiveFamily.SCALAR_LAB -> state.scalarMode.name
+}
+
+private fun currentPreset(state: CollectiveUiState): MethodPreset = when (state.family) {
+    CollectiveFamily.WORLD_BEAM -> PresetCatalog.world(state.worldMode)
+    CollectiveFamily.PERCEPTION_LAB -> PresetCatalog.perception(state.collectiveMode)
+    CollectiveFamily.LAB_X -> PresetCatalog.labX(state.labXMode)
+    CollectiveFamily.THOUGHTBEAM -> PresetCatalog.classic(state.classicMode)
+    CollectiveFamily.SCALAR_LAB -> PresetCatalog.scalar(state.scalarMode)
 }
 
 @Composable
@@ -120,12 +161,15 @@ private fun CollectiveScreen(
     scopeRate: Int,
     onText: (String) -> Unit,
     onPick: () -> Unit,
-    onSave: () -> Unit,
+    onSaveAs: () -> Unit,
+    onSaveDownloads: () -> Unit,
     onFamily: (CollectiveFamily) -> Unit,
     onWorldMode: (BeamLabMode) -> Unit,
     onCollectiveMode: (CollectiveMode) -> Unit,
     onLabXMode: (GodXMode) -> Unit,
     onClassicMode: (ThoughtMode) -> Unit,
+    onScalarMode: (ScalarMode) -> Unit,
+    onResetPreset: () -> Unit,
     onPath: (ListeningPath) -> Unit,
     onPresence: (Float) -> Unit,
     onCarrier: (Float) -> Unit,
@@ -149,17 +193,18 @@ private fun CollectiveScreen(
     onClearFade: () -> Unit
 ) {
     val h = state.hardware
-    val minCarrier = h?.carrierMinHz ?: 13_500f
+    val minCarrier = h?.carrierMinHz ?: 500f
     val maxCarrier = h?.carrierMaxHz ?: 22_000f
     val spectrum = remember(scope, scopeRate) { spectrum(scope, scopeRate, 72) }
     val dominant = spectrum.maxByOrNull { it.second }?.first ?: 0f
+    val preset = currentPreset(state)
 
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("ULTRACARRIER COLLECTIVE BEAM LAB", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-        Text("True streaming • live scope • export • World Beam + Perception Lab + Lab X Originals + ThoughtBeam Classic", color = Color(0xFFA9CFC4))
+        Text("ULTRACARRIER COLLECTIVE BEAM LAB Ω", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("v15 clone + fixed TTS/save + typed variables + method presets + Scalar Lab", color = Color(0xFFA9CFC4))
         InfoCard("Status", state.status)
 
         ControlCard("Output") {
@@ -171,34 +216,22 @@ private fun CollectiveScreen(
             ChipFlow { CollectiveFamily.entries.forEach { f -> FilterChip(selected = state.family == f, onClick = { onFamily(f) }, label = { Text(f.label) }) } }
         }
 
-        when (state.family) {
-            CollectiveFamily.WORLD_BEAM -> ControlCard("World Beam bank") {
-                ChipFlow { BeamLabMode.entries.forEach { m -> FilterChip(selected = state.worldMode == m, onClick = { onWorldMode(m) }, label = { Text(m.label) }) } }
-                Text(state.worldMode.description, color = Color(0xFFA9CFC4))
-            }
-            CollectiveFamily.PERCEPTION_LAB -> ControlCard("Perception Lab bank") {
-                ChipFlow { CollectiveMode.entries.forEach { m -> FilterChip(selected = state.collectiveMode == m, onClick = { onCollectiveMode(m) }, label = { Text(m.label) }) } }
-                Text(state.collectiveMode.description, color = Color(0xFFA9CFC4))
-            }
-            CollectiveFamily.LAB_X -> ControlCard("Lab X Originals") {
-                ChipFlow { GodXMode.entries.forEach { m -> FilterChip(selected = state.labXMode == m, onClick = { onLabXMode(m) }, label = { Text(m.label) }) } }
-                Text(state.labXMode.description, color = Color(0xFFA9CFC4))
-                Text("Restored through the new streaming renderer, so long files and processed export still work.", color = Color(0xFFCEF4E7))
-            }
-            CollectiveFamily.THOUGHTBEAM -> ControlCard("ThoughtBeam Classic") {
-                ChipFlow { ThoughtMode.entries.forEach { m -> FilterChip(selected = state.classicMode == m, onClick = { onClassicMode(m) }, label = { Text(m.label) }) } }
-                Text(state.classicMode.description, color = Color(0xFFA9CFC4))
-                Text("Classic modes now use the same streaming/export pipeline as the Collective clone.", color = Color(0xFFCEF4E7))
-            }
-        }
+        ModeBank(state, onWorldMode, onCollectiveMode, onLabXMode, onClassicMode, onScalarMode)
 
-        OutlinedTextField(value = state.text, onValueChange = onText, modifier = Modifier.fillMaxWidth().height(120.dp), label = { Text("Text to encode") })
+        PresetCard(preset, onResetPreset)
+
+        OutlinedTextField(
+            value = state.text,
+            onValueChange = onText,
+            modifier = Modifier.fillMaxWidth().height(120.dp),
+            label = { Text("Text to encode with Android TTS") }
+        )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onPrepare, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("Prepare Text") }
-            OutlinedButton(onClick = onPick, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("Choose File") }
+            Button(onClick = onPrepare, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("PREPARE TTS") }
+            OutlinedButton(onClick = onPick, enabled = !state.busy, modifier = Modifier.weight(1f)) { Text("CHOOSE FILE") }
         }
         Text(state.sourceName?.let { "Ready: $it" } ?: "Ready: none", color = Color(0xFFD5EAE4))
-        Text("Selected files stream from storage. There is no whole-file FloatArray decode step.", color = Color(0xFFA9CFC4))
+        Text("Files stream from storage instead of being loaded into one giant RAM buffer.", color = Color(0xFFA9CFC4))
 
         ControlCard("Playback") {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -214,72 +247,153 @@ private fun CollectiveScreen(
         LiveScope(scope, spectrum, scopeRate, dominant)
 
         ControlCard("Save processed audio") {
-            Text("Exact stereo render. WAV automatically upgrades to RF64 if it grows beyond ordinary RIFF size.", color = Color(0xFFA9CFC4))
+            Text("The selected DSP method is rendered into the saved stereo WAV. Large WAV automatically becomes RF64.", color = Color(0xFFA9CFC4))
             ChipFlow { ExportFormat.entries.forEach { f -> FilterChip(selected = state.exportFormat == f, onClick = { onExportFormat(f) }, label = { Text(f.label) }) } }
-            Button(onClick = onSave, enabled = state.source != null && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("RENDER & SAVE") }
+            Button(onClick = onSaveDownloads, enabled = state.source != null && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("SAVE TO MUSIC / ULTRACARRIER") }
+            OutlinedButton(onClick = onSaveAs, enabled = state.source != null && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("SAVE AS…") }
             if (state.exporting) {
                 state.exportProgress?.let { LinearProgressIndicator(progress = { it.toFloat() }, modifier = Modifier.fillMaxWidth()) }
                     ?: LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
         }
 
-        ControlCard("Presence") {
-            Text("${(state.presence * 100).roundToInt()}%")
-            Slider(value = state.presence, onValueChange = onPresence, valueRange = 0.05f..1f)
-        }
-
-        when (state.family) {
-            CollectiveFamily.WORLD_BEAM -> ControlCard("Carrier + field geometry") {
-                Text("Carrier ${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
-                Slider(value = state.carrierHz.coerceIn(minCarrier, maxCarrier), onValueChange = onCarrier, valueRange = minCarrier..maxCarrier)
-                Text("ELF / low-rate pattern ${"%.2f".format(state.elfRateHz)} Hz")
-                Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 0.25f..80f)
-                Text("Pattern depth ${(state.elfDepth * 100).roundToInt()}%")
-                Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.98f)
-                Text("Target ${state.targetAngleDeg.roundToInt()}°")
-                Slider(value = state.targetAngleDeg, onValueChange = onTarget, valueRange = -70f..70f)
-                Text("Null ${state.nullAngleDeg.roundToInt()}°")
-                Slider(value = state.nullAngleDeg, onValueChange = onNull, valueRange = -80f..80f)
-                Text("Spacing ${"%.1f".format(state.spacingMm)} mm")
-                Slider(value = state.spacingMm, onValueChange = onSpacing, valueRange = 1f..80f)
-                Text("Beam dither ±${"%.1f".format(state.ditherDeg)}° at ${"%.2f".format(state.ditherRateHz)} Hz")
-                Slider(value = state.ditherDeg, onValueChange = onDither, valueRange = 0f..15f)
-                Slider(value = state.ditherRateHz, onValueChange = onDitherRate, valueRange = 0.02f..5f)
-                Text("Head width ${"%.1f".format(state.headWidthCm)} cm • distance ${state.listenerDistanceCm.roundToInt()} cm")
-                Slider(value = state.headWidthCm, onValueChange = onHeadWidth, valueRange = 10f..24f)
-                Slider(value = state.listenerDistanceCm, onValueChange = onDistance, valueRange = 10f..500f)
-            }
-            CollectiveFamily.LAB_X -> ControlCard("Lab X original controls") {
-                Text("Modulation / beat rate ${"%.2f".format(state.elfRateHz)} Hz")
-                Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 1f..80f)
-                Text("Modulation depth ${(state.elfDepth * 100).roundToInt()}%")
-                Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.90f)
-                Text("Micro-motion rate ${"%.2f".format(state.ditherRateHz)} Hz")
-                Slider(value = state.ditherRateHz, onValueChange = onDitherRate, valueRange = 0.03f..4f)
-            }
-            CollectiveFamily.THOUGHTBEAM -> ControlCard("ThoughtBeam classic controls") {
-                if (state.classicMode in setOf(ThoughtMode.PATENT_SSB, ThoughtMode.FM_SLOPE, ThoughtMode.BEAM_WHISPER, ThoughtMode.AIR_HETERODYNE, ThoughtMode.ARRAY_STEER, ThoughtMode.CHIRP_CARRIER)) {
-                    Text("Carrier ${state.carrierHz.roundToInt()} Hz", fontWeight = FontWeight.Bold)
-                    Slider(value = state.carrierHz.coerceIn(minCarrier, maxCarrier), onValueChange = onCarrier, valueRange = minCarrier..maxCarrier)
-                }
-                Text("Click / pattern rate ${"%.2f".format(state.elfRateHz)} Hz")
-                Slider(value = state.elfRateHz, onValueChange = onElfRate, valueRange = 2f..40f)
-                Text("Depth ${(state.elfDepth * 100).roundToInt()}%")
-                Slider(value = state.elfDepth, onValueChange = onElfDepth, valueRange = 0f..0.95f)
-                Text("Steering target ${state.targetAngleDeg.roundToInt()}° • spacing ${"%.1f".format(state.spacingMm)} mm")
-                Slider(value = state.targetAngleDeg, onValueChange = onTarget, valueRange = -60f..60f)
-                Slider(value = state.spacingMm, onValueChange = onSpacing, valueRange = 1f..50f)
-            }
-            CollectiveFamily.PERCEPTION_LAB -> Unit
+        ControlCard("Method variables") {
+            Text("Type an exact value or keep using the slider. Suggested values come from the selected method preset.", color = Color(0xFFA9CFC4))
+            NumberControl("Presence", state.presence, .05f, 1f, onPresence, preset.depth, 3)
+            preset.carrierHz?.let { NumberControl("Carrier Hz", state.carrierHz, minCarrier, maxCarrier, onCarrier, it, 0) }
+            preset.rateHz?.let { NumberControl("Rate / modulation Hz", state.elfRateHz, .02f, 120f, onElfRate, it, 2) }
+            preset.depth?.let { NumberControl("Depth (0–1)", state.elfDepth, 0f, .98f, onElfDepth, it, 3) }
+            preset.targetDeg?.let { NumberControl("Target angle °", state.targetAngleDeg, -80f, 80f, onTarget, it, 1) }
+            preset.nullDeg?.let { NumberControl("Null angle °", state.nullAngleDeg, -80f, 80f, onNull, it, 1) }
+            preset.spacingMm?.let { NumberControl("Spacing mm", state.spacingMm, 1f, 80f, onSpacing, it, 2) }
+            preset.ditherDeg?.let { NumberControl("Dither / spiral amount °", state.ditherDeg, 0f, 15f, onDither, it, 2) }
+            preset.ditherRateHz?.let { NumberControl("Motion / dither Hz", state.ditherRateHz, .02f, 5f, onDitherRate, it, 3) }
+            preset.headWidthCm?.let { NumberControl("Head width cm", state.headWidthCm, 10f, 24f, onHeadWidth, it, 2) }
+            preset.distanceCm?.let { NumberControl("Listener distance cm", state.listenerDistanceCm, 10f, 500f, onDistance, it, 1) }
+            Button(onClick = onResetPreset, modifier = Modifier.fillMaxWidth()) { Text("RESTORE METHOD PRESET") }
         }
 
         FadeLab(state, onStartFade, onFaded, onClearFade)
 
-        InfoCard(
-            "Banks restored",
-            "World Beam and Perception Lab remain intact. Lab X Originals and ThoughtBeam Classic are restored through streaming-native DSP, so they keep long-file playback, live scope/spectrum and processed WAV/RF64 export."
-        )
+        if (state.family == CollectiveFamily.SCALAR_LAB) {
+            InfoCard(
+                "Scalar Lab research basis",
+                "These modes turn Bearden/Tesla/phase-conjugation/longitudinal/scalar-interferometer ideas into reproducible stereo acoustic signal structures. The generated phase, carrier, beat, spiral and cancellation patterns are real; extraordinary scalar-EM interpretations remain experimental claims rather than established physics."
+            )
+        }
     }
+}
+
+@Composable
+private fun ModeBank(
+    state: CollectiveUiState,
+    onWorldMode: (BeamLabMode) -> Unit,
+    onCollectiveMode: (CollectiveMode) -> Unit,
+    onLabXMode: (GodXMode) -> Unit,
+    onClassicMode: (ThoughtMode) -> Unit,
+    onScalarMode: (ScalarMode) -> Unit
+) {
+    ControlCard("Techniques by effect") {
+        when (state.family) {
+            CollectiveFamily.WORLD_BEAM -> {
+                val groups = BeamLabMode.entries.groupBy { PresetCatalog.worldCategory(it) }
+                groups.forEach { (category, modes) ->
+                    CategoryTitle(category)
+                    ChipFlow { modes.forEach { m -> FilterChip(selected = state.worldMode == m, onClick = { onWorldMode(m) }, label = { Text(m.label) }) } }
+                }
+                Text(state.worldMode.description, color = Color(0xFFA9CFC4))
+            }
+            CollectiveFamily.PERCEPTION_LAB -> {
+                val groups = CollectiveMode.entries.groupBy { PresetCatalog.perceptionCategory(it) }
+                groups.forEach { (category, modes) ->
+                    CategoryTitle(category)
+                    ChipFlow { modes.forEach { m -> FilterChip(selected = state.collectiveMode == m, onClick = { onCollectiveMode(m) }, label = { Text(m.label) }) } }
+                }
+                Text(state.collectiveMode.description, color = Color(0xFFA9CFC4))
+            }
+            CollectiveFamily.LAB_X -> {
+                val groups = GodXMode.entries.groupBy { PresetCatalog.labXCategory(it) }
+                groups.forEach { (category, modes) ->
+                    CategoryTitle(category)
+                    ChipFlow { modes.forEach { m -> FilterChip(selected = state.labXMode == m, onClick = { onLabXMode(m) }, label = { Text(m.label) }) } }
+                }
+                Text(state.labXMode.description, color = Color(0xFFA9CFC4))
+            }
+            CollectiveFamily.THOUGHTBEAM -> {
+                val groups = ThoughtMode.entries.groupBy { PresetCatalog.classicCategory(it) }
+                groups.forEach { (category, modes) ->
+                    CategoryTitle(category)
+                    ChipFlow { modes.forEach { m -> FilterChip(selected = state.classicMode == m, onClick = { onClassicMode(m) }, label = { Text(m.label) }) } }
+                }
+                Text(state.classicMode.description, color = Color(0xFFA9CFC4))
+            }
+            CollectiveFamily.SCALAR_LAB -> {
+                ScalarMode.entries.groupBy { it.category }.forEach { (category, modes) ->
+                    CategoryTitle(category)
+                    ChipFlow { modes.forEach { m -> FilterChip(selected = state.scalarMode == m, onClick = { onScalarMode(m) }, label = { Text(m.label) }) } }
+                }
+                Text(state.scalarMode.description, color = Color(0xFFA9CFC4))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresetCard(preset: MethodPreset, onReset: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF19231E))) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("METHOD PRESET • ${preset.category}", fontWeight = FontWeight.Black, color = Color(0xFFFFD98A))
+            Text(preset.name, fontWeight = FontWeight.Black)
+            Text(preset.note, color = Color(0xFFC9E4DB))
+            Text("Suggested: ${preset.variableSummary().ifBlank { "method-defined DSP" }}", color = Color(0xFFB8A2FF))
+            OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) { Text("RESTORE PRESET") }
+        }
+    }
+}
+
+@Composable
+private fun NumberControl(
+    label: String,
+    value: Float,
+    min: Float,
+    max: Float,
+    onChange: (Float) -> Unit,
+    suggested: Float?,
+    decimals: Int
+) {
+    var text by remember(value) { mutableStateOf(formatNumber(value, decimals)) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(buildString {
+            append(label)
+            append(" • current ")
+            append(formatNumber(value, decimals))
+            suggested?.let { append(" • preset "); append(formatNumber(it, decimals)) }
+        }, fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = text,
+            onValueChange = { raw ->
+                text = raw
+                raw.trim().toFloatOrNull()?.let { onChange(it.coerceIn(min, max)) }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text("Type $label") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+        )
+        Slider(value = value.coerceIn(min, max), onValueChange = onChange, valueRange = min..max)
+    }
+}
+
+private fun formatNumber(value: Float, decimals: Int): String = when (decimals) {
+    0 -> value.roundToInt().toString()
+    1 -> "%.1f".format(value)
+    2 -> "%.2f".format(value)
+    else -> "%.3f".format(value)
+}
+
+@Composable
+private fun CategoryTitle(category: String) {
+    Text(category.uppercase(), color = Color(0xFFFFD98A), fontWeight = FontWeight.Black)
 }
 
 @Composable
@@ -305,7 +419,7 @@ private fun LiveScope(scope: FloatArray, spectrum: List<Pair<Float, Float>>, sam
                 val w = size.width / spectrum.size
                 spectrum.forEachIndexed { i, pair ->
                     val height = size.height * sqrt((pair.second / maxMag).coerceIn(0f, 1f))
-                    drawLine(Color(0xFFB8A2FF), Offset(i * w + w * 0.5f, size.height), Offset(i * w + w * 0.5f, size.height - height), maxOf(1f, w * 0.62f))
+                    drawLine(Color(0xFFB8A2FF), Offset(i * w + w * .5f, size.height), Offset(i * w + w * .5f, size.height - height), maxOf(1f, w * .62f))
                 }
             }
         }
@@ -315,12 +429,12 @@ private fun LiveScope(scope: FloatArray, spectrum: List<Pair<Float, Float>>, sam
 @Composable
 private fun FadeLab(state: CollectiveUiState, onStart: () -> Unit, onFaded: () -> Unit, onClear: () -> Unit) {
     ControlCard("COGNITIVE FILTER / PERCEPTUAL FADE LAB") {
-        Text("Fix your eyes on the center cross without chasing the side target. Tap FADED the instant the peripheral target seems to disappear or substantially dissolve.", color = Color(0xFFA9CFC4))
+        Text("Fix your eyes on the center cross. Tap FADED when the peripheral target disappears or strongly dissolves.", color = Color(0xFFA9CFC4))
         Canvas(Modifier.fillMaxWidth().height(220.dp).background(Color(0xFF111315))) {
-            val c = Offset(size.width * 0.5f, size.height * 0.5f)
+            val c = Offset(size.width * .5f, size.height * .5f)
             drawLine(Color.White, Offset(c.x - 11f, c.y), Offset(c.x + 11f, c.y), 2f)
             drawLine(Color.White, Offset(c.x, c.y - 11f), Offset(c.x, c.y + 11f), 2f)
-            val target = Offset(size.width * 0.80f, size.height * 0.48f)
+            val target = Offset(size.width * .80f, size.height * .48f)
             drawCircle(Color(0x6684FFD2), radius = 27f, center = target)
             drawCircle(Color(0x4470A8FF), radius = 17f, center = target)
             drawCircle(Color(0x88FFD5F2), radius = 8f, center = target)
@@ -372,7 +486,7 @@ private fun spectrum(samples: FloatArray, sampleRate: Int, bars: Int): List<Pair
         var re = 0.0
         var im = 0.0
         for (i in 0 until n) {
-            val window = 0.5 - 0.5 * cos(2.0 * PI * i / (n - 1).coerceAtLeast(1))
+            val window = .5 - .5 * cos(2.0 * PI * i / (n - 1).coerceAtLeast(1))
             val x = samples[start + i] * window
             val a = 2.0 * PI * k * i / n
             re += x * cos(a)
