@@ -25,7 +25,8 @@ enum class CollectiveFamily(val label: String) {
     WORLD_BEAM("World Beam"),
     PERCEPTION_LAB("Perception Lab"),
     LAB_X("Lab X Originals"),
-    THOUGHTBEAM("ThoughtBeam Classic")
+    THOUGHTBEAM("ThoughtBeam Classic"),
+    SCALAR_LAB("Scalar Lab")
 }
 
 enum class CollectiveMode(val label: String, val description: String) {
@@ -91,6 +92,7 @@ data class CollectiveConfig(
     val collectiveMode: CollectiveMode,
     val labXMode: GodXMode,
     val classicMode: ThoughtMode,
+    val scalarMode: ScalarMode,
     val listeningPath: ListeningPath,
     val requestedSampleRate: Int,
     val carrierHz: Float,
