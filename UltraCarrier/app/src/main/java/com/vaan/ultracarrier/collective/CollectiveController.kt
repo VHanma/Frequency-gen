@@ -1,10 +1,14 @@
 package com.vaan.ultracarrier.collective
 
+import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.vaan.ultracarrier.audio.AudioHardwareChecker
 import com.vaan.ultracarrier.audio.BeamLabMode
@@ -13,10 +17,16 @@ import com.vaan.ultracarrier.audio.HardwareMode
 import com.vaan.ultracarrier.audio.ListeningPath
 import com.vaan.ultracarrier.audio.ThoughtMode
 import com.vaan.ultracarrier.audio.TtsSynthesizer
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 data class CollectiveUiState(
@@ -29,6 +39,7 @@ data class CollectiveUiState(
     val collectiveMode: CollectiveMode = CollectiveMode.THOUGHT_GHOST,
     val labXMode: GodXMode = GodXMode.VOICE_OF_GOD_STACK,
     val classicMode: ThoughtMode = ThoughtMode.CENTER_LOCK,
+    val scalarMode: ScalarMode = ScalarMode.PHASE_CONJUGATE_PAIR,
     val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
     val presence: Float = 0.48f,
     val carrierHz: Float = 18_000f,
@@ -47,7 +58,7 @@ data class CollectiveUiState(
     val playing: Boolean = false,
     val exporting: Boolean = false,
     val exportProgress: Double? = null,
-    val status: String = "Collective Beam Lab ready. World Beam, Perception Lab, Lab X and ThoughtBeam are all present.",
+    val status: String = "Collective Scalar clone ready. Select a method; its recommended variables load automatically.",
     val report: CollectiveReport? = null,
     val fadeRunning: Boolean = false,
     val fadeElapsedMs: Long? = null,
@@ -60,6 +71,7 @@ class CollectiveController(context: Context) : AutoCloseable {
     private val decoder = CollectiveStreamDecoder(app.contentResolver)
     private val engine = CollectiveAudioEngine(app.contentResolver)
     private val originalEngine = OriginalStreamingAudioEngine(app.contentResolver)
+    private val scalarEngine = ScalarStreamingAudioEngine(app.contentResolver)
     private val tts = TtsSynthesizer(app)
     private val hardwareChecker = AudioHardwareChecker(app)
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -78,23 +90,68 @@ class CollectiveController(context: Context) : AutoCloseable {
     init {
         hardwareChecker.start { h ->
             val s = _state.value
-            val carrier = if (s.carrierHz in h.carrierMinHz..h.carrierMaxHz) s.carrierHz else (h.carrierMaxHz - 300f).coerceIn(h.carrierMinHz, h.carrierMaxHz)
-            _state.value = s.copy(hardware = h, carrierHz = carrier, status = if (s.playing) s.status else routeMessage(s.listeningPath, h))
+            val carrier = if (s.carrierHz in h.carrierMinHz..h.carrierMaxHz) s.carrierHz
+            else (h.carrierMaxHz - 300f).coerceIn(h.carrierMinHz, h.carrierMaxHz)
+            _state.value = s.copy(
+                hardware = h,
+                carrierHz = carrier,
+                status = if (s.playing || s.exporting) s.status else routeMessage(s.listeningPath, h)
+            )
         }
     }
 
     fun setText(v: String) { _state.value = _state.value.copy(text = v) }
-    fun setFamily(v: CollectiveFamily) { _state.value = _state.value.copy(family = v, status = v.label) }
-    fun setWorldMode(v: BeamLabMode) { _state.value = _state.value.copy(worldMode = v, status = v.description) }
-    fun setCollectiveMode(v: CollectiveMode) { _state.value = _state.value.copy(collectiveMode = v, status = v.description) }
-    fun setLabXMode(v: GodXMode) { _state.value = _state.value.copy(labXMode = v, status = v.description) }
-    fun setClassicMode(v: ThoughtMode) { _state.value = _state.value.copy(classicMode = v, status = v.description) }
-    fun setPath(v: ListeningPath) { val s = _state.value; _state.value = s.copy(listeningPath = v, status = s.hardware?.let { routeMessage(v, it) } ?: v.description) }
+
+    fun setFamily(v: CollectiveFamily) {
+        val s = _state.value.copy(family = v)
+        _state.value = applyPresetTo(s, presetFor(s), "${v.label} preset loaded")
+    }
+
+    fun setWorldMode(v: BeamLabMode) {
+        val s = _state.value.copy(worldMode = v)
+        _state.value = applyPresetTo(s, PresetCatalog.world(v), "${v.label} preset loaded")
+    }
+
+    fun setCollectiveMode(v: CollectiveMode) {
+        val s = _state.value.copy(collectiveMode = v)
+        _state.value = applyPresetTo(s, PresetCatalog.perception(v), "${v.label} preset loaded")
+    }
+
+    fun setLabXMode(v: GodXMode) {
+        val s = _state.value.copy(labXMode = v)
+        _state.value = applyPresetTo(s, PresetCatalog.labX(v), "${v.label} preset loaded")
+    }
+
+    fun setClassicMode(v: ThoughtMode) {
+        val s = _state.value.copy(classicMode = v)
+        _state.value = applyPresetTo(s, PresetCatalog.classic(v), "${v.label} preset loaded")
+    }
+
+    fun setScalarMode(v: ScalarMode) {
+        val s = _state.value.copy(scalarMode = v)
+        _state.value = applyPresetTo(s, PresetCatalog.scalar(v), "${v.label} preset loaded")
+    }
+
+    fun resetPreset() {
+        val s = _state.value
+        val p = presetFor(s)
+        _state.value = applyPresetTo(s, p, "Restored ${p.name} recommended variables")
+    }
+
+    fun setPath(v: ListeningPath) {
+        val s = _state.value
+        _state.value = s.copy(listeningPath = v, status = s.hardware?.let { routeMessage(v, it) } ?: v.description)
+    }
     fun setPresence(v: Float) { _state.value = _state.value.copy(presence = v.coerceIn(0.05f, 1f)) }
-    fun setCarrier(v: Float) { val h = _state.value.hardware ?: return; _state.value = _state.value.copy(carrierHz = v.coerceIn(h.carrierMinHz, h.carrierMaxHz)) }
-    fun setElfRate(v: Float) { _state.value = _state.value.copy(elfRateHz = v.coerceIn(0.25f, 80f)) }
+    fun setCarrier(v: Float) {
+        val h = _state.value.hardware
+        val low = h?.carrierMinHz ?: 500f
+        val high = h?.carrierMaxHz ?: 22_000f
+        _state.value = _state.value.copy(carrierHz = v.coerceIn(low, high))
+    }
+    fun setElfRate(v: Float) { _state.value = _state.value.copy(elfRateHz = v.coerceIn(0.02f, 120f)) }
     fun setElfDepth(v: Float) { _state.value = _state.value.copy(elfDepth = v.coerceIn(0f, 0.98f)) }
-    fun setTarget(v: Float) { _state.value = _state.value.copy(targetAngleDeg = v.coerceIn(-70f, 70f)) }
+    fun setTarget(v: Float) { _state.value = _state.value.copy(targetAngleDeg = v.coerceIn(-80f, 80f)) }
     fun setNull(v: Float) { _state.value = _state.value.copy(nullAngleDeg = v.coerceIn(-80f, 80f)) }
     fun setSpacing(v: Float) { _state.value = _state.value.copy(spacingMm = v.coerceIn(1f, 80f)) }
     fun setDither(v: Float) { _state.value = _state.value.copy(ditherDeg = v.coerceIn(0f, 15f)) }
@@ -110,23 +167,42 @@ class CollectiveController(context: Context) : AutoCloseable {
         val name = queryName(uri)
         tempTts?.delete(); tempTts = null
         _scopeData.value = FloatArray(0)
-        _state.value = _state.value.copy(source = CollectiveSource.UriSource(uri, info), sourceName = name, busy = false, status = "Ready: $name • ${formatDuration(info.durationSeconds)} • ${info.formatLabel} • streaming")
+        _state.value = _state.value.copy(
+            source = CollectiveSource.UriSource(uri, info),
+            sourceName = name,
+            busy = false,
+            status = "Ready: $name • ${formatDuration(info.durationSeconds)} • ${info.formatLabel} • streaming"
+        )
     }
 
     fun prepareText() {
         val text = _state.value.text.trim()
-        if (text.isBlank()) { _state.value = _state.value.copy(status = "Enter text first."); return }
-        launchUi("Synthesizing speech…") {
+        if (text.isBlank()) {
+            _state.value = _state.value.copy(status = "Enter text first.")
+            return
+        }
+        launchUi("Starting Android TTS…") {
             val file = withContext(Dispatchers.IO) { tts.synthesize(text) }
             val info = withContext(Dispatchers.IO) { decoder.inspectFile(file) }
             tempTts?.delete(); tempTts = file
-            _state.value = _state.value.copy(source = CollectiveSource.FileSource(file, info), sourceName = "Voice: ${text.take(42)}", busy = false, status = "Speech ready • ${formatDuration(info.durationSeconds)}")
+            _state.value = _state.value.copy(
+                source = CollectiveSource.FileSource(file, info),
+                sourceName = "Voice: ${text.take(42)}",
+                busy = false,
+                status = "TTS audio ready • ${formatDuration(info.durationSeconds)} • ${info.formatLabel}"
+            )
         }
     }
 
     fun play() {
-        val source = _state.value.source ?: run { _state.value = _state.value.copy(status = "Prepare text or choose a file first."); return }
-        val h = _state.value.hardware ?: run { _state.value = _state.value.copy(status = "Audio hardware is still initializing."); return }
+        val source = _state.value.source ?: run {
+            _state.value = _state.value.copy(status = "Prepare text or choose a file first.")
+            return
+        }
+        val h = _state.value.hardware ?: run {
+            _state.value = _state.value.copy(status = "Audio hardware is still initializing.")
+            return
+        }
         stopInternal(); session++
         val id = session
         _state.value = _state.value.copy(busy = true, playing = true, exporting = false, report = null, status = "Opening stream…")
@@ -136,23 +212,75 @@ class CollectiveController(context: Context) : AutoCloseable {
                 do {
                     pass++
                     val cfg = config(h)
-                    val started: (CollectiveReport) -> Unit = { r -> if (id == session) _state.value = _state.value.copy(busy = false, playing = true, report = r, status = "${r.modeLabel}${if (_state.value.loop) " • loop $pass" else ""} • ${r.sampleRate} Hz") }
-                    val scopeFn: (FloatArray, Int) -> Unit = { wave, rate -> if (id == session) { _scopeData.value = wave; _scopeRate.value = rate } }
-                    if (cfg.family == CollectiveFamily.LAB_X || cfg.family == CollectiveFamily.THOUGHTBEAM) {
-                        originalEngine.play(source, decoder, cfg, h.outputDevice, started, scopeFn)
-                    } else {
-                        engine.play(source, decoder, cfg, h.outputDevice, started, scopeFn)
+                    val started: (CollectiveReport) -> Unit = { r ->
+                        if (id == session) _state.value = _state.value.copy(
+                            busy = false,
+                            playing = true,
+                            report = r,
+                            status = "${r.modeLabel}${if (_state.value.loop) " • loop $pass" else ""} • ${r.sampleRate} Hz"
+                        )
+                    }
+                    val scopeFn: (FloatArray, Int) -> Unit = { wave, rate ->
+                        if (id == session) { _scopeData.value = wave; _scopeRate.value = rate }
+                    }
+                    when (cfg.family) {
+                        CollectiveFamily.LAB_X, CollectiveFamily.THOUGHTBEAM -> originalEngine.play(source, decoder, cfg, h.outputDevice, started, scopeFn)
+                        CollectiveFamily.SCALAR_LAB -> scalarEngine.play(source, decoder, cfg, h.outputDevice, started, scopeFn)
+                        else -> engine.play(source, decoder, cfg, h.outputDevice, started, scopeFn)
                     }
                     if (id != session) return@launch
                 } while (_state.value.loop)
                 if (id == session) _state.value = _state.value.copy(busy = false, playing = false, status = "Finished")
-            } catch (t: Throwable) { if (id == session) fail(t) }
+            } catch (t: Throwable) {
+                if (id == session) fail(t)
+            }
         }
     }
 
     fun export(destination: Uri) {
-        val source = _state.value.source ?: run { _state.value = _state.value.copy(status = "Choose or prepare audio first."); return }
-        val h = _state.value.hardware ?: run { _state.value = _state.value.copy(status = "Audio hardware is still initializing."); return }
+        startExport(destination, onSuccess = null, onFailure = null)
+    }
+
+    fun saveToDownloads() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            _state.value = _state.value.copy(status = "Use SAVE AS on Android 9 or earlier.")
+            return
+        }
+        val source = _state.value.source ?: run {
+            _state.value = _state.value.copy(status = "Choose or prepare audio first.")
+            return
+        }
+        if (source.info.sampleRate <= 0) return
+        val name = "Collective-${_state.value.family.name}-${selectedModeName(_state.value)}-${System.currentTimeMillis()}.wav"
+        val values = ContentValues().apply {
+            put(MediaStore.Audio.Media.DISPLAY_NAME, name)
+            put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
+            put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/UltraCarrier")
+            put(MediaStore.Audio.Media.IS_PENDING, 1)
+        }
+        val uri = app.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values) ?: run {
+            _state.value = _state.value.copy(status = "Android could not create a Downloads/Music save target. Try SAVE AS.")
+            return
+        }
+        startExport(
+            destination = uri,
+            onSuccess = {
+                val done = ContentValues().apply { put(MediaStore.Audio.Media.IS_PENDING, 0) }
+                app.contentResolver.update(uri, done, null, null)
+            },
+            onFailure = { runCatching { app.contentResolver.delete(uri, null, null) } }
+        )
+    }
+
+    private fun startExport(destination: Uri, onSuccess: (() -> Unit)?, onFailure: (() -> Unit)?) {
+        val source = _state.value.source ?: run {
+            _state.value = _state.value.copy(status = "Choose or prepare audio first.")
+            return
+        }
+        val h = _state.value.hardware ?: run {
+            _state.value = _state.value.copy(status = "Audio hardware is still initializing.")
+            return
+        }
         stopInternal(); session++
         val id = session
         val fmt = _state.value.exportFormat
@@ -160,33 +288,66 @@ class CollectiveController(context: Context) : AutoCloseable {
         job = scope.launch(Dispatchers.IO) {
             try {
                 val cfg = config(h)
-                val progress: (Double?) -> Unit = { p -> if (id == session) _state.value = _state.value.copy(exportProgress = p, status = p?.let { "Rendering ${(it * 100).roundToInt()}%…" } ?: "Rendering stream…") }
-                val scopeFn: (FloatArray, Int) -> Unit = { wave, rate -> if (id == session) { _scopeData.value = wave; _scopeRate.value = rate } }
-                if (cfg.family == CollectiveFamily.LAB_X || cfg.family == CollectiveFamily.THOUGHTBEAM) {
-                    originalEngine.export(source, decoder, cfg, destination, fmt, progress, scopeFn)
-                } else {
-                    engine.export(source, decoder, cfg, destination, fmt, progress, scopeFn)
+                val progress: (Double?) -> Unit = { p ->
+                    if (id == session) _state.value = _state.value.copy(
+                        exportProgress = p,
+                        status = p?.let { "Rendering ${(it * 100).roundToInt()}%…" } ?: "Rendering stream…"
+                    )
                 }
-                if (id == session) _state.value = _state.value.copy(busy = false, exporting = false, exportProgress = 1.0, status = "Saved ${fmt.label} successfully.")
-            } catch (t: Throwable) { if (id == session) fail(t) }
+                val scopeFn: (FloatArray, Int) -> Unit = { wave, rate ->
+                    if (id == session) { _scopeData.value = wave; _scopeRate.value = rate }
+                }
+                when (cfg.family) {
+                    CollectiveFamily.LAB_X, CollectiveFamily.THOUGHTBEAM -> originalEngine.export(source, decoder, cfg, destination, fmt, progress, scopeFn)
+                    CollectiveFamily.SCALAR_LAB -> scalarEngine.export(source, decoder, cfg, destination, fmt, progress, scopeFn)
+                    else -> engine.export(source, decoder, cfg, destination, fmt, progress, scopeFn)
+                }
+                onSuccess?.invoke()
+                if (id == session) _state.value = _state.value.copy(
+                    busy = false,
+                    exporting = false,
+                    exportProgress = 1.0,
+                    status = "Saved ${fmt.label} successfully."
+                )
+            } catch (t: Throwable) {
+                onFailure?.invoke()
+                if (id == session) fail(t)
+            }
         }
     }
 
-    fun stop() { session++; stopInternal(); _state.value = _state.value.copy(busy = false, playing = false, exporting = false, status = "Stopped") }
-    fun startFadeTrial() { fadeStart = SystemClock.elapsedRealtime(); _state.value = _state.value.copy(fadeRunning = true, fadeElapsedMs = null, status = "Fade trial running. Fixate the center mark; tap FADED when the peripheral target disappears.") }
+    fun stop() {
+        session++
+        stopInternal()
+        _state.value = _state.value.copy(busy = false, playing = false, exporting = false, status = "Stopped")
+    }
+
+    fun startFadeTrial() {
+        fadeStart = SystemClock.elapsedRealtime()
+        _state.value = _state.value.copy(
+            fadeRunning = true,
+            fadeElapsedMs = null,
+            status = "Fade trial running. Fixate the center mark; tap FADED when the peripheral target disappears."
+        )
+    }
+
     fun markFaded() {
         val s = _state.value
         if (!s.fadeRunning) return
         val elapsed = SystemClock.elapsedRealtime() - fadeStart
-        val label = when (s.family) {
-            CollectiveFamily.WORLD_BEAM -> s.worldMode.label
-            CollectiveFamily.PERCEPTION_LAB -> s.collectiveMode.label
-            CollectiveFamily.LAB_X -> s.labXMode.label
-            CollectiveFamily.THOUGHTBEAM -> s.classicMode.label
-        }
-        _state.value = s.copy(fadeRunning = false, fadeElapsedMs = elapsed, fadeTrials = (s.fadeTrials + FadeTrial(label, elapsed, System.currentTimeMillis())).takeLast(20), status = "Fade recorded: ${"%.2f".format(elapsed / 1000.0)} s")
+        val label = selectedModeLabel(s)
+        _state.value = s.copy(
+            fadeRunning = false,
+            fadeElapsedMs = elapsed,
+            fadeTrials = (s.fadeTrials + FadeTrial(label, elapsed, System.currentTimeMillis())).takeLast(20),
+            status = "Fade recorded: ${"%.2f".format(elapsed / 1000.0)} s"
+        )
     }
-    fun clearFadeTrials() { _state.value = _state.value.copy(fadeRunning = false, fadeElapsedMs = null, fadeTrials = emptyList(), status = "Fade trials cleared.") }
+
+    fun clearFadeTrials() {
+        _state.value = _state.value.copy(fadeRunning = false, fadeElapsedMs = null, fadeTrials = emptyList(), status = "Fade trials cleared.")
+    }
+
     fun setListeningVolume() {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val f = when (_state.value.listeningPath) {
@@ -198,19 +359,101 @@ class CollectiveController(context: Context) : AutoCloseable {
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (max * f).roundToInt().coerceIn(1, max), AudioManager.FLAG_SHOW_UI)
     }
 
-    private fun config(h: HardwareMode): CollectiveConfig {
-        val s = _state.value
-        return CollectiveConfig(s.family, s.worldMode, s.collectiveMode, s.labXMode, s.classicMode, s.listeningPath, h.requestedSampleRate, s.carrierHz, s.presence, s.elfRateHz, s.elfDepth, s.targetAngleDeg, s.nullAngleDeg, s.spacingMm, s.ditherDeg, s.ditherRateHz, s.headWidthCm, s.listenerDistanceCm)
+    private fun presetFor(s: CollectiveUiState): MethodPreset = when (s.family) {
+        CollectiveFamily.WORLD_BEAM -> PresetCatalog.world(s.worldMode)
+        CollectiveFamily.PERCEPTION_LAB -> PresetCatalog.perception(s.collectiveMode)
+        CollectiveFamily.LAB_X -> PresetCatalog.labX(s.labXMode)
+        CollectiveFamily.THOUGHTBEAM -> PresetCatalog.classic(s.classicMode)
+        CollectiveFamily.SCALAR_LAB -> PresetCatalog.scalar(s.scalarMode)
     }
 
-    private fun stopInternal() { engine.stop(); originalEngine.stop(); job?.cancel(); job = null }
+    private fun applyPresetTo(s: CollectiveUiState, p: MethodPreset, message: String): CollectiveUiState {
+        val h = s.hardware
+        val carrier = p.carrierHz?.let {
+            val low = h?.carrierMinHz ?: 500f
+            val high = h?.carrierMaxHz ?: 22_000f
+            it.coerceIn(low, high)
+        } ?: s.carrierHz
+        return s.copy(
+            carrierHz = carrier,
+            elfRateHz = p.rateHz ?: s.elfRateHz,
+            elfDepth = p.depth ?: s.elfDepth,
+            targetAngleDeg = p.targetDeg ?: s.targetAngleDeg,
+            nullAngleDeg = p.nullDeg ?: s.nullAngleDeg,
+            spacingMm = p.spacingMm ?: s.spacingMm,
+            ditherDeg = p.ditherDeg ?: s.ditherDeg,
+            ditherRateHz = p.ditherRateHz ?: s.ditherRateHz,
+            headWidthCm = p.headWidthCm ?: s.headWidthCm,
+            listenerDistanceCm = p.distanceCm ?: s.listenerDistanceCm,
+            status = "$message • ${p.variableSummary()}"
+        )
+    }
+
+    private fun config(h: HardwareMode): CollectiveConfig {
+        val s = _state.value
+        return CollectiveConfig(
+            s.family,
+            s.worldMode,
+            s.collectiveMode,
+            s.labXMode,
+            s.classicMode,
+            s.scalarMode,
+            s.listeningPath,
+            h.requestedSampleRate,
+            s.carrierHz,
+            s.presence,
+            s.elfRateHz,
+            s.elfDepth,
+            s.targetAngleDeg,
+            s.nullAngleDeg,
+            s.spacingMm,
+            s.ditherDeg,
+            s.ditherRateHz,
+            s.headWidthCm,
+            s.listenerDistanceCm
+        )
+    }
+
+    private fun selectedModeLabel(s: CollectiveUiState): String = when (s.family) {
+        CollectiveFamily.WORLD_BEAM -> s.worldMode.label
+        CollectiveFamily.PERCEPTION_LAB -> s.collectiveMode.label
+        CollectiveFamily.LAB_X -> s.labXMode.label
+        CollectiveFamily.THOUGHTBEAM -> s.classicMode.label
+        CollectiveFamily.SCALAR_LAB -> s.scalarMode.label
+    }
+
+    private fun selectedModeName(s: CollectiveUiState): String = when (s.family) {
+        CollectiveFamily.WORLD_BEAM -> s.worldMode.name
+        CollectiveFamily.PERCEPTION_LAB -> s.collectiveMode.name
+        CollectiveFamily.LAB_X -> s.labXMode.name
+        CollectiveFamily.THOUGHTBEAM -> s.classicMode.name
+        CollectiveFamily.SCALAR_LAB -> s.scalarMode.name
+    }
+
+    private fun stopInternal() {
+        engine.stop()
+        originalEngine.stop()
+        scalarEngine.stop()
+        job?.cancel()
+        job = null
+    }
+
     private fun setBusy(msg: String) { _state.value = _state.value.copy(busy = true, status = msg) }
-    private fun fail(t: Throwable) { _state.value = _state.value.copy(busy = false, playing = false, exporting = false, status = "Error: ${t.message ?: t::class.java.simpleName}") }
-    private fun launchUi(message: String, block: suspend () -> Unit) { scope.launch { setBusy(message); try { block() } catch (t: Throwable) { fail(t) } } }
+    private fun fail(t: Throwable) {
+        _state.value = _state.value.copy(
+            busy = false,
+            playing = false,
+            exporting = false,
+            status = "Error: ${t.message ?: t::class.java.simpleName}"
+        )
+    }
+    private fun launchUi(message: String, block: suspend () -> Unit) {
+        scope.launch { setBusy(message); try { block() } catch (t: Throwable) { fail(t) } }
+    }
 
     private fun routeMessage(path: ListeningPath, h: HardwareMode): String = when (path) {
         ListeningPath.EXTERNAL_ARRAY -> if (h.external) "External route detected. Directional stereo/ultrasonic fields available." else "External-array mode selected. Connect your DAC/array when ready."
-        ListeningPath.PHONE_SPEAKER -> "Phone speaker ready. All four mode families use the streaming pipeline. ${h.detail}"
+        ListeningPath.PHONE_SPEAKER -> "Phone speaker ready. Beam/scalar high-frequency modes are signal experiments; Perception Lab modes are directly audible. ${h.detail}"
         ListeningPath.HEADPHONES -> if (h.external) "Headphone route detected." else "Headphone mode selected. Connect headphones for stereo internal-image modes."
         ListeningPath.BONE_CONDUCTION -> if (h.external) "Bone-conduction route detected." else "Bone-conduction mode selected."
     }
@@ -226,9 +469,19 @@ class CollectiveController(context: Context) : AutoCloseable {
 
     private fun formatDuration(seconds: Double?): String {
         if (seconds == null || !seconds.isFinite()) return "unknown length"
-        val total = seconds.roundToInt().coerceAtLeast(0); val h = total / 3600; val m = (total % 3600) / 60; val s = total % 60
+        val total = seconds.roundToInt().coerceAtLeast(0)
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val s = total % 60
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
-    override fun close() { session++; stopInternal(); hardwareChecker.stop(); tts.close(); tempTts?.delete(); scope.cancel() }
+    override fun close() {
+        session++
+        stopInternal()
+        hardwareChecker.stop()
+        tts.close()
+        tempTts?.delete()
+        scope.cancel()
+    }
 }
