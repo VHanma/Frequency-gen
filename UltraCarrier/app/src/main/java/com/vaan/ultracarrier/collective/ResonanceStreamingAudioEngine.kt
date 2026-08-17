@@ -55,7 +55,7 @@ class ResonanceStreamingAudioEngine(private val resolver: ContentResolver) {
                 CollectiveReport(
                     sampleRate = sampleRate,
                     routeName = route,
-                    family = CollectiveFamily.RESONANCE_LAB,
+                    family = config.family,
                     modeLabel = mode.label,
                     carrierHz = session.carrier
                 )
