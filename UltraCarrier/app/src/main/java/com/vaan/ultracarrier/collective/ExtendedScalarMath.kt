@@ -3,16 +3,14 @@ package com.vaan.ultracarrier.collective
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * Extended experimental sonification bank.
- * All outputs are ordinary stereo acoustic DSP. Names inspired by fringe or
- * speculative literature describe the mapping idea, not a claim of exotic EM output.
+ * Extended experimental sonification bank. This is separate from the original
+ * Scalar Lab so the original mode equations remain unchanged.
  */
 internal class ExtendedScalarMath(
     private val config: CollectiveConfig,
@@ -28,8 +26,10 @@ internal class ExtendedScalarMath(
     private var sourceHz = 7.83f
     private var resonator = 0f
     private var resonatorVelocity = 0f
+    private var timeCounter = 0L
 
-    fun sample(mode: ScalarMode, voice: Float, frame: Long): Pair<Float, Float> {
+    fun sample(mode: ResonanceMode, voice: Float, frame: Long): Pair<Float, Float> {
+        timeCounter = frame
         updateSourceTracker(voice)
         val t = frame.toDouble() / sampleRate
         val rate = config.elfRateHz.coerceIn(.02f, 120f)
@@ -42,7 +42,7 @@ internal class ExtendedScalarMath(
         val c = carrier.coerceIn(500f, maxF)
 
         val out = when (mode) {
-            ScalarMode.DNA_SONIFICATION -> {
+            ResonanceMode.DNA_SONIFICATION -> {
                 val q = ((voice + 1f) * 1.999f).toInt().coerceIn(0, 3)
                 val ratios = floatArrayOf(1f, 4f / 3f, 3f / 2f, 2f)
                 val f = (min(c * .18f, 1800f) * ratios[q]).coerceIn(90f, 4200f)
@@ -50,30 +50,30 @@ internal class ExtendedScalarMath(
                 val x = sin(p1).toFloat() * (.45f + .5f * abs(voice))
                 x to x
             }
-            ScalarMode.DNA_MEYL_RESONANCE, ScalarMode.DNA_SCALAR -> {
+            ResonanceMode.DNA_MEYL_RESONANCE, ResonanceMode.DNA_SCALAR -> {
                 val spin = 2.0 * PI * motion * t
                 advance1(c)
                 val l = cos(p1 + spin).toFloat() * amp * env
                 val r = cos(-p1 - spin).toFloat() * amp * env
                 l to r
             }
-            ScalarMode.DNA_MONTAGNIER_LF_SIGNAL -> {
+            ResonanceMode.DNA_MONTAGNIER_LF_SIGNAL -> {
                 val lf = sin(2.0 * PI * rate * t).toFloat()
                 val x = voice * (.55f + .35f * lf) + lf * .08f
                 x to x
             }
-            ScalarMode.DNA_EM_RESONANCE, ScalarMode.DNA_RESONANT_ANTENNA -> {
+            ResonanceMode.DNA_EM_RESONANCE, ResonanceMode.DNA_RESONANT_ANTENNA -> {
                 advance1(c)
                 advance2((c + rate * 2f).coerceAtMost(maxF))
                 val side = (.65 * cos(p1) + .35 * cos(p2)).toFloat() * amp * env
                 side to (side * .92f + voice * .08f)
             }
-            ScalarMode.DNA_HELICAL_MODULATION, ScalarMode.SINGLE_HELIX, ScalarMode.HELICAL_STEREO_ROTATION -> {
+            ResonanceMode.DNA_HELICAL_MODULATION, ResonanceMode.SINGLE_HELIX, ResonanceMode.HELICAL_STEREO_ROTATION -> {
                 val spin = 2.0 * PI * motion * t
                 advance1(c)
                 cos(p1 + spin).toFloat() * amp to cos(p1 - spin).toFloat() * amp
             }
-            ScalarMode.DNA_CADUCEUS, ScalarMode.CADUCEUS_HELIX -> {
+            ResonanceMode.DNA_CADUCEUS, ResonanceMode.CADUCEUS_HELIX -> {
                 val spin = 2.0 * PI * motion * t
                 advance1(c)
                 advance2((c * .5f).coerceAtLeast(250f))
@@ -81,23 +81,23 @@ internal class ExtendedScalarMath(
                 val r = (cos(p1 - spin) + .45 * cos(p2 + 2.0 * spin)).toFloat() * amp / 1.45f
                 l to r
             }
-            ScalarMode.DNA_LIGHT_SOUND -> {
-                val pulse = (.5f + .5f * sin(2.0 * PI * rate * t).toFloat())
+            ResonanceMode.DNA_LIGHT_SOUND -> {
+                val pulse = .5f + .5f * sin(2.0 * PI * rate * t).toFloat()
                 advance1((c * .25f).coerceIn(180f, 5000f))
                 val x = (voice * .62f + sin(p1).toFloat() * .38f) * (.25f + .75f * pulse)
                 x to x
             }
-            ScalarMode.DNA_FORWARD_REVERSE_STRAND -> {
+            ResonanceMode.DNA_FORWARD_REVERSE_STRAND -> {
                 advance1(c)
                 cos(p1).toFloat() * amp to cos(-p1).toFloat() * amp
             }
-            ScalarMode.DNA_HARMONIC_ENCODING, ScalarMode.HARMONIC_RESONANCE -> harmonicStack(c, amp)
-            ScalarMode.DNA_LONGITUDINAL, ScalarMode.LONGITUDINAL_WAVE_REP -> {
+            ResonanceMode.DNA_HARMONIC_ENCODING, ResonanceMode.HARMONIC_RESONANCE -> harmonicStack(c, amp)
+            ResonanceMode.DNA_LONGITUDINAL, ResonanceMode.LONGITUDINAL_WAVE_REP -> {
                 advance1(c)
                 val x = cos(p1).toFloat() * amp * env
                 x to -x
             }
-            ScalarMode.DNA_INFORMATION_FREQUENCY -> {
+            ResonanceMode.DNA_INFORMATION_FREQUENCY -> {
                 val base = (180f + (voice + 1f) * 620f).coerceIn(120f, 1400f)
                 val snapped = floatArrayOf(196f, 261.63f, 329.63f, 392f, 523.25f, 659.25f).minBy { abs(it - base) }
                 advance1(snapped)
@@ -105,8 +105,8 @@ internal class ExtendedScalarMath(
                 x to x
             }
 
-            ScalarMode.SCHUMANN_FUNDAMENTAL, ScalarMode.SCHUMANN_AM -> carrierAm(c, 7.83f, voice, depth)
-            ScalarMode.SCHUMANN_MULTI, ScalarMode.EARTH_RESONANCE -> {
+            ResonanceMode.SCHUMANN_FUNDAMENTAL, ResonanceMode.SCHUMANN_AM -> carrierAm(c, 7.83f, voice, depth, t)
+            ResonanceMode.SCHUMANN_MULTI, ResonanceMode.EARTH_RESONANCE -> {
                 val rs = floatArrayOf(7.83f, 14.3f, 20.8f, 27.3f, 33.8f)
                 var m = 0f
                 rs.forEach { m += sin(2.0 * PI * it * t).toFloat() }
@@ -115,14 +115,14 @@ internal class ExtendedScalarMath(
                 val x = cos(p1).toFloat() * amp * (.62f + .30f * m)
                 x to x
             }
-            ScalarMode.SCHUMANN_NEAREST -> carrierAm(c, nearestSchumann(sourceHz), voice, depth)
-            ScalarMode.SCHUMANN_HARMONIC_SUBHARMONIC -> {
+            ResonanceMode.SCHUMANN_NEAREST -> carrierAm(c, nearestSchumann(sourceHz), voice, depth, t)
+            ResonanceMode.SCHUMANN_HARMONIC_SUBHARMONIC -> {
                 val m = (sin(2.0 * PI * 3.915 * t) + sin(2.0 * PI * 7.83 * t) + sin(2.0 * PI * 15.66 * t)).toFloat() / 3f
                 advance1(c)
                 val x = cos(p1).toFloat() * amp * (.65f + .3f * m)
                 x to x
             }
-            ScalarMode.SCHUMANN_SOURCE_SPECTRUM -> {
+            ResonanceMode.SCHUMANN_SOURCE_SPECTRUM -> {
                 val n = nearestSchumann(sourceHz)
                 val m = (sin(2.0 * PI * n * t) + .5 * sin(4.0 * PI * n * t)).toFloat() / 1.5f
                 advance1(c)
@@ -130,60 +130,60 @@ internal class ExtendedScalarMath(
                 x to x
             }
 
-            ScalarMode.RESONANT_OSCILLATOR -> resonantVoice(voice, rate)
-            ScalarMode.STANDING_WAVES -> {
+            ResonanceMode.RESONANT_OSCILLATOR -> resonantVoice(voice, rate)
+            ResonanceMode.STANDING_WAVES -> {
                 advance1((c * .2f).coerceIn(100f, 5000f))
                 val a = sin(p1).toFloat() * (.35f + .6f * abs(voice))
                 a to -a
             }
-            ScalarMode.PULSED_RESONANCE -> {
+            ResonanceMode.PULSED_RESONANCE -> {
                 val gate = if ((t * rate) % 1.0 < .18) 1f else .06f
                 advance1((c * .25f).coerceIn(120f, 6000f))
                 val x = sin(p1).toFloat() * amp * gate
                 x to x
             }
-            ScalarMode.HV_IMPULSE_SONIFICATION -> {
+            ResonanceMode.HV_IMPULSE_SONIFICATION -> {
                 val derivative = abs(voice - lastVoice)
                 val impulse = if (derivative > .08f && ((frame / 8) % 2L == 0L)) (voice - lastVoice).coerceIn(-1f, 1f) else 0f
                 impulse to -impulse
             }
-            ScalarMode.WIRELESS_RESONANCE -> {
+            ResonanceMode.WIRELESS_RESONANCE -> {
                 advance1((c * .22f).coerceIn(150f, 5000f))
                 advance2((c * .22f + rate).coerceIn(150f, 5000f))
                 val l = (sin(p1) + .65 * sin(p2)).toFloat() * amp / 1.65f
                 val r = (sin(p2) + .65 * sin(p1)).toFloat() * amp / 1.65f
                 l to r
             }
-            ScalarMode.MECHANICAL_RESONANCE -> resonantVoice(voice, (rate * 12f).coerceIn(30f, 900f))
+            ResonanceMode.MECHANICAL_RESONANCE -> resonantVoice(voice, (rate * 12f).coerceIn(30f, 900f))
 
-            ScalarMode.TRI_NODE_120 -> triNode(c, voice, t)
-            ScalarMode.QUAD_PHASE_ROTATION, ScalarMode.QUADRUPOLE_FOUR_NODE, ScalarMode.OSCILLATING_QUADRUPOLE_VISUAL -> quadNode(c, voice, t)
-            ScalarMode.COUNTER_OSCILLATING_PAIRS -> {
+            ResonanceMode.TRI_NODE_120 -> triNode(c, voice, t)
+            ResonanceMode.QUAD_PHASE_ROTATION, ResonanceMode.QUADRUPOLE_FOUR_NODE, ResonanceMode.OSCILLATING_QUADRUPOLE_VISUAL -> quadNode(c, voice, t)
+            ResonanceMode.COUNTER_OSCILLATING_PAIRS -> {
                 advance1(c)
                 advance2((c + rate).coerceAtMost(maxF))
                 val a = cos(p1).toFloat() * amp
                 val b = sin(p2).toFloat() * amp
                 (a + b) * .5f to (-a + b) * .5f
             }
-            ScalarMode.EXTREME_FAST_MOD -> {
+            ResonanceMode.EXTREME_FAST_MOD -> {
                 val fast = (120f + abs(voice) * 2400f).coerceAtMost(5000f)
                 val fm = sin(2.0 * PI * fast * t).toFloat()
                 advance1((c + 220f * fm).coerceIn(500f, maxF))
                 cos(p1).toFloat() * amp to cos(p1 + PI / 2).toFloat() * amp
             }
-            ScalarMode.CHIRPED_OSCILLATION -> chirpPair(c, t, false)
-            ScalarMode.FREQ_ACCELERATION -> chirpPair(c, t, false)
-            ScalarMode.FREQ_DECELERATION -> chirpPair(c, t, true)
-            ScalarMode.GRAV_WAVE_CHIRP -> {
+            ResonanceMode.CHIRPED_OSCILLATION -> chirpPair(c, t, false)
+            ResonanceMode.FREQ_ACCELERATION -> chirpPair(c, t, false)
+            ResonanceMode.FREQ_DECELERATION -> chirpPair(c, t, true)
+            ResonanceMode.GRAV_WAVE_CHIRP -> {
                 val period = 3.0
                 val u = ((t % period) / period).coerceIn(0.0, 1.0)
                 val curve = u * u * u
-                val f = (120f + curve.toFloat() * 2600f)
+                val f = 120f + curve.toFloat() * 2600f
                 advance1(f)
                 val x = sin(p1).toFloat() * (.15f + .78f * u.toFloat()) * (.5f + .5f * abs(voice))
                 x to -x
             }
-            ScalarMode.PAIS_AUDIO_STACK -> {
+            ResonanceMode.PAIS_AUDIO_STACK -> {
                 val rot = 2.0 * PI * motion * t
                 val fast = sin(2.0 * PI * (400.0 + 600.0 * abs(voice)) * t).toFloat()
                 val pulse = if ((t * rate) % 1.0 < .35) 1f else .35f
@@ -194,7 +194,7 @@ internal class ExtendedScalarMath(
                 l to r
             }
 
-            ScalarMode.DOUBLE_HELIX, ScalarMode.COUNTER_ROTATING_HELIX -> {
+            ResonanceMode.DOUBLE_HELIX, ResonanceMode.COUNTER_ROTATING_HELIX -> {
                 val spin = 2.0 * PI * motion * t
                 advance1(c)
                 advance2((c * .618f).coerceIn(300f, maxF))
@@ -202,7 +202,7 @@ internal class ExtendedScalarMath(
                 val r = (cos(p1 - spin) + .5 * cos(p2 + spin)).toFloat() * amp / 1.5f
                 l to r
             }
-            ScalarMode.CROSSING_FREQ_SWEEPS -> {
+            ResonanceMode.CROSSING_FREQ_SWEEPS -> {
                 val u = ((t * motion) % 1.0).toFloat()
                 val lo = 180f
                 val hi = min(4200f, maxF)
@@ -211,16 +211,16 @@ internal class ExtendedScalarMath(
                 advance1(fl); advance2(fr)
                 sin(p1).toFloat() * amp to sin(p2).toFloat() * amp
             }
-            ScalarMode.LEFT_ASC_RIGHT_DESC -> splitSweep(t, motion, true, amp, maxF)
-            ScalarMode.LEFT_DESC_RIGHT_ASC -> splitSweep(t, motion, false, amp, maxF)
-            ScalarMode.INTERTWINED_PHASE -> {
+            ResonanceMode.LEFT_ASC_RIGHT_DESC -> splitSweep(t, motion, true, amp, maxF)
+            ResonanceMode.LEFT_DESC_RIGHT_ASC -> splitSweep(t, motion, false, amp, maxF)
+            ResonanceMode.INTERTWINED_PHASE -> {
                 val spin = sin(2.0 * PI * motion * t) * PI
                 advance1(c); advance2((c * .75f).coerceAtLeast(300f))
                 val l = (cos(p1 + spin) + .45 * sin(p2 - spin)).toFloat() * amp / 1.45f
                 val r = (cos(p1 - spin) + .45 * sin(p2 + spin)).toFloat() * amp / 1.45f
                 l to r
             }
-            ScalarMode.HELICAL_SPECTRAL_MOVEMENT -> {
+            ResonanceMode.HELICAL_SPECTRAL_MOVEMENT -> {
                 val spin = 2.0 * PI * motion * t
                 advance1((c * .35f).coerceIn(180f, maxF))
                 advance2((c * .55f).coerceIn(240f, maxF))
@@ -229,7 +229,7 @@ internal class ExtendedScalarMath(
                 val r = (sin(p1 - spin) + .6 * sin(p2 - 2 * spin) + .35 * sin(p3 - 3 * spin)).toFloat() * amp / 1.95f
                 l to r
             }
-            ScalarMode.NESTED_HELICES -> {
+            ResonanceMode.NESTED_HELICES -> {
                 val spin = 2.0 * PI * motion * t
                 val slowSpin = sin(2.0 * PI * rate * t) * PI
                 advance1(c); advance2((c * .618f).coerceAtLeast(300f)); advance3((c * .382f).coerceAtLeast(180f))
@@ -237,8 +237,6 @@ internal class ExtendedScalarMath(
                 val r = (cos(p1 - spin) + .5 * cos(p2 + spin - slowSpin) + .25 * cos(p3 - 2 * slowSpin)).toFloat() * amp / 1.75f
                 l to r
             }
-
-            else -> voice to voice
         }
         lastVoice = voice
         wrap()
@@ -247,16 +245,12 @@ internal class ExtendedScalarMath(
 
     private fun harmonicStack(baseCarrier: Float, amp: Float): Pair<Float, Float> {
         val base = (baseCarrier * .12f).coerceIn(90f, 1800f)
-        advance1(base)
-        advance2(base * 2f)
-        advance3(base * 3f)
-        advance4(base * 5f)
+        advance1(base); advance2(base * 2f); advance3(base * 3f); advance4(base * 5f)
         val x = (sin(p1) + .55 * sin(p2) + .34 * sin(p3) + .21 * sin(p4)).toFloat() * amp / 2.1f
         return x to x
     }
 
-    private fun carrierAm(c: Float, modHz: Float, voice: Float, depth: Float): Pair<Float, Float> {
-        val t = totalPhaseTime()
+    private fun carrierAm(c: Float, modHz: Float, voice: Float, depth: Float, t: Double): Pair<Float, Float> {
         val mod = 1f - depth * .5f + depth * .5f * (1f + sin(2.0 * PI * modHz * t).toFloat())
         advance1(c)
         val x = cos(p1).toFloat() * sqrt((1f + config.presence * voice).coerceIn(.02f, 1.98f)) * mod
@@ -338,9 +332,7 @@ internal class ExtendedScalarMath(
         return values.minBy { abs(it - folded) }
     }
 
-    private fun totalPhaseTime(): Double = p4 / (2.0 * PI * 100.0).coerceAtLeast(1.0)
-
-    private fun advance1(f: Float) { p1 += 2.0 * PI * f / sampleRate; p4 += 2.0 * PI * 100.0 / sampleRate }
+    private fun advance1(f: Float) { p1 += 2.0 * PI * f / sampleRate }
     private fun advance2(f: Float) { p2 += 2.0 * PI * f / sampleRate }
     private fun advance3(f: Float) { p3 += 2.0 * PI * f / sampleRate }
     private fun advance4(f: Float) { p4 += 2.0 * PI * f / sampleRate }
