@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Omega v18 Matrix + simultaneous Layer Stack build.
 android {
     namespace = "com.vaan.ultracarrier"
     compileSdk = 36
