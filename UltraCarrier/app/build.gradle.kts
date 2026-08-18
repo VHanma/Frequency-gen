@@ -11,8 +11,8 @@ android {
         applicationId = "com.vaan.ultracarrier.collectivebeamlab.omega"
         minSdk = 26
         targetSdk = 36
-        versionCode = 17
-        versionName = "17.0.0-collective-omega-persistent-resonance"
+        versionCode = 18
+        versionName = "18.0.0-collective-omega-matrix-stack"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
