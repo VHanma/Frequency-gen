@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - ultracarrier-apk-build
+      - world-beam-lab-build
+      - world-beam-lab-no-file-cap
+      - world-beam-lab-collective
+      - collective-beam-lab-scalar-clone
   pull_request:
     branches:
       - main
@@ -11,6 +15,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   build:
@@ -39,13 +45,13 @@ jobs:
         with:
           gradle-version: "9.4.1"
 
-      - name: Build installable debug APK
+      - name: Build unsigned release APK
         id: gradle_build
         working-directory: UltraCarrier
         shell: bash
         run: |
           set +e
-          gradle :app:assembleDebug --stacktrace > ../gradle-build.log 2>&1
+          gradle :app:assembleRelease --stacktrace > ../gradle-build.log 2>&1
           status=$?
           grep -E "^(e:|.*error:|FAILURE:|\\* What went wrong:|> Task .* FAILED)" ../gradle-build.log | tail -n 250 > ../gradle-errors.txt || true
           exit $status
@@ -61,16 +67,59 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Rename APK
+      - name: Align and explicitly sign APK
         if: success()
         shell: bash
-        run: cp UltraCarrier/app/build/outputs/apk/debug/app-debug.apk UltraCarrier.apk
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          UNSIGNED="UltraCarrier/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="UltraCarrier-aligned.apk"
+          FINAL="UltraCarrier.apk"
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+
+          keytool -genkeypair -noprompt \
+            -keystore install-key.jks \
+            -storepass ultracarrier \
+            -keypass ultracarrier \
+            -alias ultracarrier \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=UltraCarrier Personal Build, OU=Android, O=VHanma, C=US"
+
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks install-key.jks \
+            --ks-key-alias ultracarrier \
+            --ks-pass pass:ultracarrier \
+            --key-pass pass:ultracarrier \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$FINAL"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
+          unzip -t "$FINAL" >/dev/null
+          sha256sum "$FINAL" | tee UltraCarrier.sha256
 
       - name: Upload finished APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: UltraCarrier-installable-apk
-          path: UltraCarrier.apk
+          path: |
+            UltraCarrier.apk
+            UltraCarrier.sha256
           if-no-files-found: error
           retention-days: 7
+
+      - name: Report build run to draft PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 18 --repo "${GITHUB_REPOSITORY}" --body "Omega v18 CI report • run ${GITHUB_RUN_ID} • event ${GITHUB_EVENT_NAME} • commit ${GITHUB_SHA} • job status: ${{ job.status }}"
