@@ -12,8 +12,34 @@ enum class OmegaFamily(val label: String) {
     LAB_X("Lab X Originals"),
     THOUGHTBEAM("ThoughtBeam Classic"),
     SCALAR_LAB("Scalar Lab Original"),
-    RESONANCE_LAB("Resonance Lab • DNA / Earth / Helix")
+    RESONANCE_LAB("Resonance Lab • DNA / Earth / Helix"),
+    MATRIX_LAB("Matrix Lab • Transcript Library")
 }
+
+data class OmegaLayerRecipe(
+    val id: Long,
+    val label: String,
+    val family: OmegaFamily,
+    val worldMode: BeamLabMode,
+    val collectiveMode: CollectiveMode,
+    val labXMode: GodXMode,
+    val classicMode: ThoughtMode,
+    val scalarMode: ScalarMode,
+    val resonanceMode: ResonanceMode,
+    val matrixMode: MatrixMode,
+    val listeningPath: ListeningPath,
+    val carrierHz: Float,
+    val presence: Float,
+    val elfRateHz: Float,
+    val elfDepth: Float,
+    val targetAngleDeg: Float,
+    val nullAngleDeg: Float,
+    val spacingMm: Float,
+    val ditherDeg: Float,
+    val ditherRateHz: Float,
+    val headWidthCm: Float,
+    val listenerDistanceCm: Float
+)
 
 data class OmegaUiState(
     val text: String = "",
@@ -27,6 +53,7 @@ data class OmegaUiState(
     val classicMode: ThoughtMode = ThoughtMode.CENTER_LOCK,
     val scalarMode: ScalarMode = ScalarMode.PHASE_CONJUGATE_PAIR,
     val resonanceMode: ResonanceMode = ResonanceMode.DNA_SONIFICATION,
+    val matrixMode: MatrixMode = MatrixMode.VACUUM_POLARIZATION,
     val listeningPath: ListeningPath = ListeningPath.PHONE_SPEAKER,
     val presence: Float = 0.48f,
     val carrierHz: Float = 18_000f,
@@ -43,12 +70,20 @@ data class OmegaUiState(
     val exportFormat: ExportFormat = ExportFormat.WAV_24,
     val busy: Boolean = false,
     val playing: Boolean = false,
+    val stackPlaying: Boolean = false,
     val exporting: Boolean = false,
     val backgroundActive: Boolean = false,
     val exportProgress: Double? = null,
-    val status: String = "Omega Resonance build ready.",
+    val status: String = "Omega Matrix build ready.",
     val report: CollectiveReport? = null,
+    val stackLayers: List<OmegaLayerRecipe> = emptyList(),
     val fadeRunning: Boolean = false,
     val fadeElapsedMs: Long? = null,
-    val fadeTrials: List<FadeTrial> = emptyList()
+    val fadeTrials: List<FadeTrial> = emptyList(),
+    val remotePatient: String = "",
+    val remoteIntention: String = "",
+    val remoteConsent: Boolean = false,
+    val remoteSilent: Boolean = false,
+    val remoteActive: Boolean = false,
+    val remoteStatus: String = "Remote Resonance Session idle."
 )
