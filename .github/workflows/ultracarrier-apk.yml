@@ -116,3 +116,11 @@ jobs:
             UltraCarrier.sha256
           if-no-files-found: error
           retention-days: 7
+
+      - name: Report Omega ELF build run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 21 --repo "${GITHUB_REPOSITORY}" --body "Omega ELF clone CI • run ${GITHUB_RUN_ID} • commit ${GITHUB_SHA} • event ${GITHUB_EVENT_NAME} • status ${{ job.status }}"
