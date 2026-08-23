@@ -3,17 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Omega v18 Matrix + simultaneous Layer Stack build.
+// Omega v19 Skill Transfer Lab clone. Installs beside the existing Omega build.
 android {
     namespace = "com.vaan.ultracarrier"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.collectivebeamlab.omega"
+        applicationId = "com.vaan.ultracarrier.skilltransfer.omega"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "18.0.0-collective-omega-matrix-stack"
+        versionCode = 19
+        versionName = "19.0.0-skill-transfer-lab"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
