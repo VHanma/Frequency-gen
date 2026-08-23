@@ -3,6 +3,8 @@ name: Build Absolute Random Selector APK
 on:
   push:
     branches: [random-selector-app]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
