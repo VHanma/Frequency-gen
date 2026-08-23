@@ -1,6 +1,8 @@
 name: Build Skill Transfer APK Now
 
 on:
+  push:
+    branches: [main]
   issues:
     types: [opened]
   workflow_dispatch:
@@ -11,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD APK NOW]')
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD APK NOW]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -63,8 +65,8 @@ jobs:
             UltraCarrier-SkillTransferLab.sha256
           retention-days: 7
 
-      - name: Report run back to trigger issue
-        if: always() && github.event_name == 'issues'
+      - name: Report run to issue 24
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body "APK build run: ${GITHUB_RUN_ID} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        run: gh issue comment 24 --repo "$GITHUB_REPOSITORY" --body "APK build run: ${GITHUB_RUN_ID} • event: ${GITHUB_EVENT_NAME} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
