@@ -11,8 +11,8 @@ android {
         applicationId = "com.vaan.frequencyremapper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.1.0"
     }
 
     buildTypes {
@@ -50,61 +50,4 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
-}
-
-// Keep the rendered file available even when Android's automatic MediaStore
-// write fails, and route verified exports through the public Downloads folder.
-// This source patch is idempotent and is applied before every Kotlin compile.
-val applyReliableSaveFix by tasks.registering {
-    doLast {
-        val activity = file("src/main/java/com/vaan/frequencyremapper/MainActivity.kt")
-        var text = activity.readText()
-
-        val automaticSaveBlock = Regex(
-            """val uri = AudioSaver\.saveToMusic\(\s*context,\s*file,\s*AudioSaver\.defaultOutputName\(source\.sourceName\)\s*\)\s*file to uri"""
-        )
-        text = automaticSaveBlock.replace(text) {
-            """val uri = runCatching {
-                        ReliableAudioSaver.saveToDownloads(
-                            context,
-                            file,
-                            AudioSaver.defaultOutputName(source.sourceName)
-                        )
-                    }.getOrNull()
-                    file to uri"""
-        }
-
-        text = text.replace(
-            "AudioSaver.copyToUri(context, file, destination)",
-            "ReliableAudioSaver.copyToUri(context, file, destination)"
-        )
-
-        text = text.replace(
-            "status = \"Rendered and saved in Music/FrequencyRemapper.\"",
-            """status = if (result.second != null) {
-                    "Rendered and saved in Downloads/FrequencyRemapper."
-                } else {
-                    "Rendered successfully. Automatic save failed, so tap SAVE AS… and choose the exact location."
-                }"""
-        )
-
-        text = text.replace(
-            "This creates a new WAV in Music/FrequencyRemapper. Your original file stays untouched.",
-            "This creates a new WAV in Downloads/FrequencyRemapper. Your original file stays untouched."
-        )
-
-        check("ReliableAudioSaver.saveToDownloads" in text) {
-            "Reliable save patch did not apply to MainActivity.kt"
-        }
-        check("ReliableAudioSaver.copyToUri" in text) {
-            "Reliable Save As patch did not apply to MainActivity.kt"
-        }
-        activity.writeText(text)
-    }
-}
-
-tasks.configureEach {
-    if (name.startsWith("compile") && name.endsWith("Kotlin")) {
-        dependsOn(applyReliableSaveFix)
-    }
 }
