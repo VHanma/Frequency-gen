@@ -54,7 +54,7 @@ class AudioHardwareChecker(context: Context) {
                 carrierMinHz = 13_500f,
                 carrierMaxHz = min(22_000f, rate * 0.458f),
                 external = false,
-                detail = "Primary output reports ${rate / 1000.0} kHz. Carrier ceiling is 22 kHz."
+                detail = "Primary output reports ${rate / 1000.0} kHz. Phone-speaker carrier ceiling remains 22 kHz."
             )
         }
 
@@ -71,14 +71,20 @@ class AudioHardwareChecker(context: Context) {
 
         val name = external.productName?.toString().orEmpty().ifBlank { typeName(external.type) }
         val report = if (reported.isEmpty()) "sample rates not reported" else "reports ${reported.joinToString()} Hz"
+
+        // Keep a little Nyquist margin for modulation sidebands and interpolation.
+        // 96 kHz paths expose ~43.2 kHz carriers; 192 kHz paths expose ~86.4 kHz.
+        // This replaces the old arbitrary 40 kHz external ceiling.
+        val hfCeiling = rate * 0.45f
+
         return HardwareMode(
-            label = if (rate > 48_000) "External high-resolution mode" else "External listening mode",
+            label = if (rate > 48_000) "External high-frequency mode" else "External listening mode",
             outputDevice = external,
             requestedSampleRate = rate,
             carrierMinHz = 13_500f,
-            carrierMaxHz = min(40_000f, rate * 0.45f),
+            carrierMaxHz = hfCeiling,
             external = true,
-            detail = "$name, $report. Requesting ${rate / 1000.0} kHz."
+            detail = "$name, $report. Requesting ${rate / 1000.0} kHz; encoded carrier ceiling ≈ ${"%.1f".format(hfCeiling / 1000f)} kHz."
         )
     }
 
