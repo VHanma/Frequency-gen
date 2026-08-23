@@ -20,13 +20,13 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="UltraCarrier Collective Beam Lab Ω+"
+        android:label="UltraCarrier Skill Transfer Lab Ω"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.UltraCarrier">
 
         <activity
-            android:name=".OmegaActivity"
+            android:name=".SkillTransferActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
@@ -34,6 +34,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".OmegaActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
 
         <service
             android:name=".collective.OmegaPlaybackService"
