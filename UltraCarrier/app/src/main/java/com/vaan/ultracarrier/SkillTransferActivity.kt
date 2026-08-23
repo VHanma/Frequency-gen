@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vaan.ultracarrier.collective.OmegaRuntime
 import java.io.File
+import kotlin.math.abs
 
 private enum class SkillProtocol(val label: String, val evidence: String) {
     MOTOR_CHUNKING(
@@ -63,8 +65,14 @@ class SkillTransferActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val omega = OmegaRuntime.get(applicationContext)
         setContent {
+            val omegaState by omega.state.collectAsState()
             SkillTransferTheme {
                 SkillTransferScreen(
+                    currentCarrierHz = omegaState.carrierHz,
+                    carrierMaxHz = omegaState.hardware?.carrierMaxHz ?: 22_000f,
+                    hardwareLabel = omegaState.hardware?.label ?: "Detecting audio hardware…",
+                    hardwareDetail = omegaState.hardware?.detail ?: "",
+                    onSetCarrier = omega::setCarrier,
                     onStageAudio = omega::loadFile,
                     onSetText = omega::setText,
                     onPrepareText = omega::prepareText,
@@ -94,6 +102,11 @@ private fun SkillTransferTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun SkillTransferScreen(
+    currentCarrierHz: Float,
+    carrierMaxHz: Float,
+    hardwareLabel: String,
+    hardwareDetail: String,
+    onSetCarrier: (Float) -> Unit,
     onStageAudio: (Uri) -> Unit,
     onSetText: (String) -> Unit,
     onPrepareText: () -> Unit,
@@ -177,10 +190,31 @@ private fun SkillTransferScreen(
             ) { Text("PREPARE TEXT AS AUDIO PAYLOAD") }
         }
 
+        LabCard("Carrier band / external HF device") {
+            Text(hardwareLabel, fontWeight = FontWeight.Bold)
+            if (hardwareDetail.isNotBlank()) Text(hardwareDetail, color = Color(0xFFA9CFC4))
+            Text("Current carrier: ${formatHz(currentCarrierHz)} • detected ceiling: ${formatHz(carrierMaxHz)}", color = Color(0xFFD5EAE4))
+            val presets = listOf(18_000f, 20_000f, 22_000f, 30_000f, 40_000f, 60_000f, 80_000f)
+            presets.filter { it <= carrierMaxHz + 1f }.forEach { hz ->
+                FilterChip(
+                    selected = abs(currentCarrierHz - hz) < 50f,
+                    onClick = {
+                        onSetCarrier(hz)
+                        status = "Carrier set to ${formatHz(hz)} for this skill packet."
+                    },
+                    label = { Text(formatHz(hz)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (carrierMaxHz <= 22_100f) {
+                Text("Phone output is currently the limiting path. Connect the external high-frequency output and the higher carrier choices unlock automatically.", color = Color(0xFFFFD59A))
+            }
+        }
+
         LabCard("Frequency / audio channel") {
             Text(audioUri?.lastPathSegment ?: "No external audio selected", color = Color(0xFFD5EAE4))
             Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text("CHOOSE AUDIO PAYLOAD") }
-            Text("Use the full Omega encoder to choose Matrix, scalar, resonance, carrier, modulation, stacking and looping variables. This screen deliberately does not invent a single 'basal ganglia frequency.'", color = Color(0xFFA9CFC4))
+            Text("Use the full Omega encoder for Matrix, scalar, resonance, modulation, stacking and looping variables. The carrier control above follows the connected output hardware instead of the old 40 kHz cap.", color = Color(0xFFA9CFC4))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = onBeamPlay, modifier = Modifier.weight(1f)) { Text("PLAY ENCODED PAYLOAD") }
                 OutlinedButton(onClick = onBeamStop, modifier = Modifier.weight(1f)) { Text("STOP") }
@@ -202,11 +236,11 @@ private fun SkillTransferScreen(
             Button(
                 onClick = {
                     val file = File(context.filesDir, "skill-transfer-trials.csv")
-                    if (!file.exists()) file.writeText("timestamp,skill,protocol,source_audio,baseline_time,baseline_accuracy,post_time,post_accuracy,payload,packet_notes,notes\n")
+                    if (!file.exists()) file.writeText("timestamp,skill,protocol,carrier_hz,source_audio,baseline_time,baseline_accuracy,post_time,post_accuracy,payload,packet_notes,notes\n")
                     file.appendText(
                         listOf(
                             System.currentTimeMillis().toString(), skillName, protocol.name,
-                            (audioUri != null).toString(), baselineTime, baselineAccuracy,
+                            currentCarrierHz.toString(), (audioUri != null).toString(), baselineTime, baselineAccuracy,
                             postTime, postAccuracy, informationPayload, packetNotes, notes
                         ).joinToString(",") { csv(it) } + "\n"
                     )
@@ -237,5 +271,7 @@ private fun LabCard(title: String, content: @Composable () -> Unit) {
         }
     }
 }
+
+private fun formatHz(hz: Float): String = if (hz >= 1000f) "${"%.1f".format(hz / 1000f)} kHz" else "${hz.toInt()} Hz"
 
 private fun csv(value: String): String = "\"${value.replace("\"", "\"\"").replace("\n", " ").replace("\r", " ")}\""
