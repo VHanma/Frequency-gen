@@ -1,0 +1,2 @@
+Skill Transfer APK build trigger
+Purpose: force GitHub Actions on ultracarrier-apk-build after pointing this branch at the frequency-only Skill Transfer Lab commit.
