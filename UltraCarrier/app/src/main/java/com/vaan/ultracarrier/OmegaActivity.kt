@@ -53,6 +53,8 @@ import com.vaan.ultracarrier.audio.GodXMode
 import com.vaan.ultracarrier.audio.ListeningPath
 import com.vaan.ultracarrier.audio.ThoughtMode
 import com.vaan.ultracarrier.collective.CollectiveMode
+import com.vaan.ultracarrier.collective.ElfPreset
+import com.vaan.ultracarrier.collective.ElfPresetLibrary
 import com.vaan.ultracarrier.collective.ExportFormat
 import com.vaan.ultracarrier.collective.MatrixMode
 import com.vaan.ultracarrier.collective.MatrixPresetCatalog
@@ -61,10 +63,13 @@ import com.vaan.ultracarrier.collective.OmegaFamily
 import com.vaan.ultracarrier.collective.OmegaRuntime
 import com.vaan.ultracarrier.collective.OmegaUiState
 import com.vaan.ultracarrier.collective.PresetCatalog
+import com.vaan.ultracarrier.collective.ResearchPreset
+import com.vaan.ultracarrier.collective.ResearchPresetLibrary
 import com.vaan.ultracarrier.collective.ResonanceMode
 import com.vaan.ultracarrier.collective.ResonancePresetCatalog
 import com.vaan.ultracarrier.collective.ScalarMode
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -86,7 +91,7 @@ class OmegaActivity : ComponentActivity() {
                     state, scope, scopeRate,
                     controller::setText,
                     { picker.launch(arrayOf("audio/*", "application/octet-stream")) },
-                    { saver.launch("Omega-${state.family.name}-${controller.selectedModeLabel(state)}.wav") },
+                    { saver.launch("OmegaELF-${state.family.name}-${controller.selectedModeLabel(state)}.wav") },
                     controller::saveToDownloads,
                     controller::setFamily, controller::setWorldMode, controller::setCollectiveMode, controller::setLabXMode, controller::setClassicMode,
                     controller::setScalarMode, controller::setResonanceMode, controller::setMatrixMode, controller::resetPreset,
@@ -114,8 +119,7 @@ private fun preset(state: OmegaUiState): MethodPreset = when (state.family) {
     OmegaFamily.MATRIX_LAB -> MatrixPresetCatalog.preset(state.matrixMode)
 }
 
-@Composable
-private fun OmegaTheme(content: @Composable () -> Unit) {
+@Composable private fun OmegaTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF70F5D4), secondary = Color(0xFFB8A2FF), background = Color(0xFF050807), surface = Color(0xFF101B18), onBackground = Color(0xFFF0FFF9), onSurface = Color(0xFFF0FFF9)), content = content)
 }
 
@@ -141,22 +145,28 @@ private fun OmegaScreen(
     val maxCarrier = h?.carrierMaxHz ?: 22_000f
     val spectrum = remember(scope, scopeRate) { spectrum(scope, scopeRate, 72) }
     val dominant = spectrum.maxByOrNull { it.second }?.first ?: 0f
+    var modeSearch by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("ULTRACARRIER COLLECTIVE BEAM LAB Ω+ MATRIX", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-        Text("All previous families • transcript Matrix Lab • simultaneous Layer Stack • persistent background playback", color = Color(0xFFA9CFC4))
+        Text("ULTRACARRIER Ω+ ELF LAB CLONE", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
+        Text("Everything from Ω+ Matrix • dedicated ELF library • global search • patent/neuroscience research presets • simultaneous Layer Stack", color = Color(0xFFA9CFC4))
         InfoCard("Status", state.status)
         if (state.backgroundActive) InfoCard("BACKGROUND PLAYBACK ACTIVE", "Foreground media service + wake lock are holding the audio stream. Lock the screen or switch apps; use STOP here or in the notification.")
 
         ControlCard("Output") {
             ChipFlow { ListeningPath.entries.forEach { path -> FilterChip(selected = state.listeningPath == path, onClick = { onPath(path) }, label = { Text(path.label) }) } }
+            h?.let { Text(it.detail, color = Color(0xFFB8A2FF)) }
             OutlinedButton(onClick = onVolume) { Text("SET LISTENING VOLUME") }
         }
+
+        GlobalSearchCard(modeSearch, { modeSearch = it }, state, onFamily, onWorldMode, onCollectiveMode, onLabXMode, onClassicMode, onScalarMode, onResonanceMode, onMatrixMode, onCarrier, onElfRate, onElfDepth)
 
         ControlCard("Experiment family") { ChipFlow { OmegaFamily.entries.forEach { family -> FilterChip(selected = state.family == family, onClick = { onFamily(family) }, label = { Text(family.label) }) } } }
         ModeBank(state, onWorldMode, onCollectiveMode, onLabXMode, onClassicMode, onScalarMode, onResonanceMode, onMatrixMode)
         PresetCard(p, onResetPreset)
 
+        ElfLabCard(state, onFamily, onMatrixMode, onCarrier, onElfRate, onElfDepth)
+        ResearchPresetCard(state, onFamily, onMatrixMode, onCarrier, onElfRate, onElfDepth)
         LayerStackCard(state, onAddLayer, onRemoveLayer, onClearStack, onPlayStack)
 
         ControlCard("Source") {
@@ -181,7 +191,7 @@ private fun OmegaScreen(
         LiveScope(scope, spectrum, scopeRate, dominant)
 
         ControlCard("Save processed audio") {
-            Text("Saves the currently selected DSP method. Layer Stack is for simultaneous live playback in this build. Large WAV automatically becomes RF64.", color = Color(0xFFA9CFC4))
+            Text("Saves the currently selected DSP method. Large WAV automatically becomes RF64.", color = Color(0xFFA9CFC4))
             ChipFlow { ExportFormat.entries.forEach { f -> FilterChip(selected = state.exportFormat == f, onClick = { onExportFormat(f) }, label = { Text(f.label) }) } }
             Button(onClick = onSaveDownloads, enabled = state.source != null && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("SAVE TO MUSIC / ULTRACARRIER") }
             OutlinedButton(onClick = onSaveAs, enabled = state.source != null && !state.busy, modifier = Modifier.fillMaxWidth()) { Text("SAVE AS…") }
@@ -189,9 +199,9 @@ private fun OmegaScreen(
         }
 
         ControlCard("Method variables") {
-            Text("Each method loads suggested variables. Type exact numbers or use sliders, then RESTORE PRESET to return.", color = Color(0xFFA9CFC4))
+            Text("Presets only set starting values. Type exact numbers or use sliders, then RESTORE PRESET to return.", color = Color(0xFFA9CFC4))
             NumberControl("Presence", state.presence, .05f, 1f, onPresence, p.depth, 3)
-            p.carrierHz?.let { NumberControl("Carrier Hz", state.carrierHz, minCarrier, maxCarrier, onCarrier, it, 0) }
+            p.carrierHz?.let { NumberControl("Carrier Hz", state.carrierHz, minCarrier, maxCarrier, onCarrier, it, 2) }
             p.rateHz?.let { NumberControl("Rate / modulation Hz", state.elfRateHz, .02f, 120f, onElfRate, it, 3) }
             p.depth?.let { NumberControl("Depth (0–1)", state.elfDepth, 0f, .98f, onElfDepth, it, 3) }
             p.targetDeg?.let { NumberControl("Target angle °", state.targetAngleDeg, -80f, 80f, onTarget, it, 1) }
@@ -206,24 +216,85 @@ private fun OmegaScreen(
 
         RemoteSessionCard(state, onRemotePatient, onRemoteIntention, onRemoteConsent, onRemoteSilent, onStartRemote, onEndRemote)
         FadeLab(state, onStartFade, onFaded, onClearFade)
+        if (state.family == OmegaFamily.SCALAR_LAB) InfoCard("Original Scalar Lab frozen", "The original Scalar Lab methods and equations remain in their original streaming engine.")
+        if (state.family == OmegaFamily.MATRIX_LAB) InfoCard("Matrix Lab", "RF/microwave/optical values remain symbolic unless they are ordinary PCM frequencies within the connected audio path. External high-rate audio can now use literal wideband PCM carriers up to its sample-rate limit.")
+    }
+}
 
-        if (state.family == OmegaFamily.SCALAR_LAB) InfoCard("Original Scalar Lab frozen", "The original Scalar Lab methods and equations remain in their original streaming engine. Matrix additions do not rewrite them.")
-        if (state.family == OmegaFamily.RESONANCE_LAB) InfoCard("Resonance Lab", "DNA, Schumann/Earth, Tesla-resonance, tri-node, quadrupole, chirp/Pais-inspired and helical geometry experiments remain available as their own bank.")
-        if (state.family == OmegaFamily.MATRIX_LAB) InfoCard("Matrix Lab", "Transcript-derived language, soliton, fractal, hologram, light, spin, coherence, symbolic RF/optical, spectral, time-memory, geometry, water, bio and automatic matrix experiments. RF/microwave/optical values are represented or scale-mapped through audio/visual DSP, not emitted as arbitrary radio energy.")
+private fun applyElf(p: ElfPreset, onFamily: (OmegaFamily) -> Unit, onMatrixMode: (MatrixMode) -> Unit, onCarrier: (Float) -> Unit, onRate: (Float) -> Unit, onDepth: (Float) -> Unit) {
+    onFamily(OmegaFamily.MATRIX_LAB); onMatrixMode(p.mode); onCarrier(p.carrierHz); onRate(p.rateHz); onDepth(p.depth)
+}
+private fun applyResearch(p: ResearchPreset, onFamily: (OmegaFamily) -> Unit, onMatrixMode: (MatrixMode) -> Unit, onCarrier: (Float) -> Unit, onRate: (Float) -> Unit, onDepth: (Float) -> Unit) {
+    onFamily(OmegaFamily.MATRIX_LAB); onMatrixMode(p.mode); p.carrierHz?.let(onCarrier); onRate(p.rateHz); onDepth(p.depth)
+}
+
+@Composable
+private fun ElfLabCard(state: OmegaUiState, onFamily: (OmegaFamily) -> Unit, onMatrixMode: (MatrixMode) -> Unit, onCarrier: (Float) -> Unit, onRate: (Float) -> Unit, onDepth: (Float) -> Unit) {
+    ControlCard("ELF FREQUENCY LAB • DEDICATED PRESET LIBRARY") {
+        Text("Low-rate values are generated as acoustic amplitude/phase/stereo patterns. Pick a preset, then type your own exact rate in Method variables. Add any selected ELF setup to Layer Stack to combine it with other families.", color = Color(0xFFA9CFC4))
+        ElfPresetLibrary.grouped.forEach { (category, presets) ->
+            CategoryTitle(category)
+            ChipFlow {
+                presets.forEach { p ->
+                    val selected = state.family == OmegaFamily.MATRIX_LAB && state.matrixMode == p.mode && abs(state.elfRateHz - p.rateHz) < .002f && abs(state.carrierHz - p.carrierHz) < 2f
+                    FilterChip(selected = selected, onClick = { applyElf(p, onFamily, onMatrixMode, onCarrier, onRate, onDepth) }, label = { Text("${p.label} • ${formatNumber(p.rateHz, 3)} Hz") })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResearchPresetCard(state: OmegaUiState, onFamily: (OmegaFamily) -> Unit, onMatrixMode: (MatrixMode) -> Unit, onCarrier: (Float) -> Unit, onRate: (Float) -> Unit, onDepth: (Float) -> Unit) {
+    ControlCard("RESEARCH PRESETS • HASSLER PATENT + BASAL GANGLIA") {
+        Text("Patent-derived presets reproduce signal relationships as audio DSP. Neuroscience presets sonify published oscillation bands; they are not medical treatment or brain targeting. High-rate external PCM paths can keep supported carrier values literal rather than scale-mapping them.", color = Color(0xFFA9CFC4))
+        ResearchPresetLibrary.grouped.forEach { (category, presets) ->
+            CategoryTitle(category)
+            ChipFlow { presets.forEach { p -> FilterChip(selected = false, onClick = { applyResearch(p, onFamily, onMatrixMode, onCarrier, onRate, onDepth) }, label = { Text(p.label) }) } }
+        }
+    }
+}
+
+@Composable
+private fun GlobalSearchCard(
+    query: String, onQuery: (String) -> Unit, state: OmegaUiState,
+    onFamily: (OmegaFamily) -> Unit, onWorld: (BeamLabMode) -> Unit, onPerception: (CollectiveMode) -> Unit,
+    onLabX: (GodXMode) -> Unit, onClassic: (ThoughtMode) -> Unit, onScalar: (ScalarMode) -> Unit,
+    onResonance: (ResonanceMode) -> Unit, onMatrix: (MatrixMode) -> Unit,
+    onCarrier: (Float) -> Unit, onRate: (Float) -> Unit, onDepth: (Float) -> Unit
+) {
+    ControlCard("SEARCH ALL TECHNIQUES") {
+        OutlinedTextField(value = query, onValueChange = onQuery, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Search: ELF, Schumann, DNA, phase, Hassler, beta…") })
+        val q = query.trim().lowercase()
+        if (q.isBlank()) Text("Search spans every original family plus ELF and research presets.", color = Color(0xFFA9CFC4)) else {
+            var shown = 0
+            fun matches(vararg values: String) = values.any { it.lowercase().contains(q) }
+            fun canShow() = shown < 40
+            BeamLabMode.entries.filter { matches(it.label, it.description, PresetCatalog.worldCategory(it)) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.WORLD_BEAM && state.worldMode == m, onClick = { onFamily(OmegaFamily.WORLD_BEAM); onWorld(m) }, label = { Text("World • ${m.label}") }) }
+            CollectiveMode.entries.filter { matches(it.label, it.description, PresetCatalog.perceptionCategory(it)) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.PERCEPTION_LAB && state.collectiveMode == m, onClick = { onFamily(OmegaFamily.PERCEPTION_LAB); onPerception(m) }, label = { Text("Perception • ${m.label}") }) }
+            GodXMode.entries.filter { matches(it.label, it.description, PresetCatalog.labXCategory(it)) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.LAB_X && state.labXMode == m, onClick = { onFamily(OmegaFamily.LAB_X); onLabX(m) }, label = { Text("Lab X • ${m.label}") }) }
+            ThoughtMode.entries.filter { matches(it.label, it.description, PresetCatalog.classicCategory(it)) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.THOUGHTBEAM && state.classicMode == m, onClick = { onFamily(OmegaFamily.THOUGHTBEAM); onClassic(m) }, label = { Text("ThoughtBeam • ${m.label}") }) }
+            ScalarMode.entries.filter { matches(it.label, it.description, it.category) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.SCALAR_LAB && state.scalarMode == m, onClick = { onFamily(OmegaFamily.SCALAR_LAB); onScalar(m) }, label = { Text("Scalar • ${m.label}") }) }
+            ResonanceMode.entries.filter { matches(it.label, it.description, it.category) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.RESONANCE_LAB && state.resonanceMode == m, onClick = { onFamily(OmegaFamily.RESONANCE_LAB); onResonance(m) }, label = { Text("Resonance • ${m.label}") }) }
+            MatrixMode.entries.filter { matches(it.label, it.description, it.category) }.takeWhile { canShow() }.forEach { m -> shown++; FilterChip(selected = state.family == OmegaFamily.MATRIX_LAB && state.matrixMode == m, onClick = { onFamily(OmegaFamily.MATRIX_LAB); onMatrix(m) }, label = { Text("Matrix • ${m.label}") }) }
+            ElfPresetLibrary.presets.filter { matches(it.label, it.category, it.note, it.rateHz.toString()) }.takeWhile { canShow() }.forEach { p -> shown++; FilterChip(selected = false, onClick = { applyElf(p, onFamily, onMatrix, onCarrier, onRate, onDepth) }, label = { Text("ELF • ${p.label}") }) }
+            ResearchPresetLibrary.presets.filter { matches(it.label, it.category, it.note) }.takeWhile { canShow() }.forEach { p -> shown++; FilterChip(selected = false, onClick = { applyResearch(p, onFamily, onMatrix, onCarrier, onRate, onDepth) }, label = { Text("Research • ${p.label}") }) }
+            if (shown == 0) Text("No matching technique found.", color = Color(0xFFA9CFC4)) else if (shown >= 40) Text("Showing first 40 matches. Make the search more specific to narrow it down.", color = Color(0xFFFFD98A))
+        }
     }
 }
 
 @Composable
 private fun LayerStackCard(state: OmegaUiState, onAdd: () -> Unit, onRemove: (Long) -> Unit, onClear: () -> Unit, onPlay: () -> Unit) {
     ControlCard("LAYER STACK • PLAY MULTIPLE METHODS SIMULTANEOUSLY") {
-        Text("Set a method and exact variables, then ADD CURRENT. Each layer keeps its own snapshot. Mix modes from any family.", color = Color(0xFFA9CFC4))
+        Text("Set a method and exact variables, then ADD CURRENT. Each layer keeps its own snapshot. Mix modes from any family, including ELF and research presets.", color = Color(0xFFA9CFC4))
         Button(onClick = onAdd, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) { Text("ADD CURRENT METHOD TO STACK") }
         if (state.stackLayers.isEmpty()) Text("Stack: empty", color = Color(0xFFA9CFC4))
         state.stackLayers.forEachIndexed { index, layer ->
             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF17211E))) {
                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("${index + 1}. ${layer.label}", fontWeight = FontWeight.Black)
-                    Text("${layer.family.label} • carrier ${layer.carrierHz.roundToInt()} Hz • rate ${"%.3f".format(layer.elfRateHz)} Hz • depth ${"%.2f".format(layer.elfDepth)}", color = Color(0xFFC9E4DB))
+                    Text("${layer.family.label} • carrier ${formatNumber(layer.carrierHz, 2)} Hz • rate ${"%.3f".format(layer.elfRateHz)} Hz • depth ${"%.2f".format(layer.elfDepth)}", color = Color(0xFFC9E4DB))
                     OutlinedButton(onClick = { onRemove(layer.id) }) { Text("REMOVE") }
                 }
             }
@@ -264,13 +335,8 @@ private fun ModeBank(state: OmegaUiState, onWorldMode: (BeamLabMode) -> Unit, on
     }
 }
 
-@Composable
-private fun PresetCard(preset: MethodPreset, onReset: () -> Unit) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF19231E))) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("METHOD PRESET • ${preset.category}", fontWeight = FontWeight.Black, color = Color(0xFFFFD98A)); Text(preset.name, fontWeight = FontWeight.Black); Text(preset.note, color = Color(0xFFC9E4DB)); Text("Suggested: ${preset.variableSummary().ifBlank { "method-defined DSP" }}", color = Color(0xFFB8A2FF)); OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) { Text("RESTORE PRESET") }
-        }
-    }
+@Composable private fun PresetCard(preset: MethodPreset, onReset: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF19231E))) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Text("METHOD PRESET • ${preset.category}", fontWeight = FontWeight.Black, color = Color(0xFFFFD98A)); Text(preset.name, fontWeight = FontWeight.Black); Text(preset.note, color = Color(0xFFC9E4DB)); Text("Suggested: ${preset.variableSummary().ifBlank { "method-defined DSP" }}", color = Color(0xFFB8A2FF)); OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) { Text("RESTORE PRESET") } } }
 }
 
 @Composable
