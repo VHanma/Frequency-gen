@@ -1,0 +1,3 @@
+Skill Transfer Lab APK build trigger
+Branch: matrix-skill-transfer-clone
+Purpose: trigger GitHub Actions after branch-specific workflow rule was already present.
