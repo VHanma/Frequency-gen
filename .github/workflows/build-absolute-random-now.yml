@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/build-absolute-random-now.yml']
+  pull_request:
+    branches: [main]
   issues:
     types: [opened]
   workflow_dispatch:
@@ -14,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD ABSOLUTE RANDOM]')
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD ABSOLUTE RANDOM]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
