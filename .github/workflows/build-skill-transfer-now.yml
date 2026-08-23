@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   build:
@@ -61,3 +62,9 @@ jobs:
             UltraCarrier-SkillTransferLab.apk
             UltraCarrier-SkillTransferLab.sha256
           retention-days: 7
+
+      - name: Report run back to trigger issue
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body "APK build run: ${GITHUB_RUN_ID} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
