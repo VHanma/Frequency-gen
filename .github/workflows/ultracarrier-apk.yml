@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - ultracarrier-apk-build
+      - matrix-skill-transfer-clone
   pull_request:
     branches:
       - main
