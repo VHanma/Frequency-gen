@@ -3,7 +3,6 @@ package com.vaan.ultracarrier
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.widget.VideoView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -25,7 +24,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -33,32 +31,30 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.vaan.ultracarrier.collective.OmegaRuntime
 import java.io.File
 
 private enum class SkillProtocol(val label: String, val evidence: String) {
     MOTOR_CHUNKING(
         "Basal-ganglia motor chunking",
-        "Established neuroscience: action selection, sequence chunking, reinforcement and automatization."
+        "Established learning model: basal-ganglia circuits help action selection, sequence chunking, reinforcement and automatization."
     ),
     CAUDATE_TO_PUTAMEN(
         "Caudate → putamen transition",
-        "Established learning model: associative/early sequence learning tends to recruit caudate; skilled execution increasingly recruits sensorimotor putamen."
+        "Established learning model: associative/early learning often recruits caudate while highly practiced sensorimotor execution increasingly recruits putamen."
     ),
     PSI_CAUDATE(
         "Psi / caudate-putamen probe",
-        "Exploratory hypothesis: Garry Nolan and Kit Green have publicly described unusual caudate-putamen connectivity in an experiencer cohort and a few high-end remote viewers. The specific dataset has not been established as a replicated psi biomarker."
+        "Exploratory hypothesis: Nolan and Green have publicly discussed unusual caudate-putamen connectivity in an experiencer cohort and a few high-performing remote viewers. This is not treated as a replicated psi biomarker."
     ),
     NIGHT_CLASS(
         "Night-class / remote-information probe",
-        "Fringe historical hypothesis inspired by Through the Curtain: anomalous learning or information access during altered/sleep states, with later caudate associations discussed by Nolan and others."
+        "Fringe historical hypothesis inspired by Through the Curtain: anomalous learning or information access during altered or sleep states."
     )
 }
 
@@ -70,6 +66,8 @@ class SkillTransferActivity : ComponentActivity() {
             SkillTransferTheme {
                 SkillTransferScreen(
                     onStageAudio = omega::loadFile,
+                    onSetText = omega::setText,
+                    onPrepareText = omega::prepareText,
                     onBeamPlay = omega::play,
                     onBeamStop = omega::stop,
                     onOpenOmega = { startActivity(Intent(this, OmegaActivity::class.java)) }
@@ -97,6 +95,8 @@ private fun SkillTransferTheme(content: @Composable () -> Unit) {
 @Composable
 private fun SkillTransferScreen(
     onStageAudio: (Uri) -> Unit,
+    onSetText: (String) -> Unit,
+    onPrepareText: () -> Unit,
     onBeamPlay: () -> Unit,
     onBeamStop: () -> Unit,
     onOpenOmega: () -> Unit
@@ -104,31 +104,22 @@ private fun SkillTransferScreen(
     val context = LocalContext.current
     var protocol by remember { mutableStateOf(SkillProtocol.MOTOR_CHUNKING) }
     var skillName by remember { mutableStateOf("Kung-fu / combat skill experiment") }
-    var chunkPlan by remember { mutableStateOf("") }
+    var informationPayload by remember { mutableStateOf("") }
+    var packetNotes by remember { mutableStateOf("") }
     var audioUri by remember { mutableStateOf<Uri?>(null) }
-    var videoUri by remember { mutableStateOf<Uri?>(null) }
-    var videoView by remember { mutableStateOf<VideoView?>(null) }
-    var loopVideo by remember { mutableStateOf(true) }
     var baselineTime by remember { mutableStateOf("") }
     var baselineAccuracy by remember { mutableStateOf("") }
     var postTime by remember { mutableStateOf("") }
     var postAccuracy by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Choose a protocol and build one specific skill packet.") }
+    var status by remember { mutableStateOf("Build one frequency-only skill-transfer trial.") }
 
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             audioUri = uri
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             onStageAudio(uri)
-            status = "Audio staged in the Omega beam engine."
-        }
-    }
-    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            videoUri = uri
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            status = "Skill video loaded for synchronized exposure."
+            status = "Audio payload staged in the Omega frequency engine."
         }
     }
 
@@ -138,12 +129,11 @@ private fun SkillTransferScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("ULTRACARRIER SKILL TRANSFER LAB Ω", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Black)
-        Text("Matrix-style procedural-learning experiment • audio beam + video training + before/after measurement", color = Color(0xFFA9CFC4))
+        Text("Frequency-only procedural-information experiment • no camera • no pose tracking • no visual channel", color = Color(0xFFA9CFC4))
 
         LabCard("Research target") {
-            Text("Question: can structured audio/video information accelerate acquisition of a specific motor program beyond ordinary exposure?", fontWeight = FontWeight.Bold)
-            Text("The basal ganglia are especially relevant because they help select actions, chunk movement sequences and convert practiced behavior into automatic performance.", color = Color(0xFFD5EAE4))
-            Text("The psi branch is treated as a separate hypothesis rather than assumed to be the mechanism.", color = Color(0xFFA9CFC4))
+            Text("Question: can structured information encoded into audio/frequency patterns measurably improve acquisition or automatic execution of a specific skill?", fontWeight = FontWeight.Bold)
+            Text("The experiment keeps conventional motor-learning and psi/nonlocal interpretations separate so the same payload can be tested under different hypotheses.", color = Color(0xFFD5EAE4))
         }
 
         LabCard("Protocol") {
@@ -158,67 +148,48 @@ private fun SkillTransferScreen(
             Text(protocol.evidence, color = Color(0xFFCCDDD8))
         }
 
-        LabCard("Skill packet") {
+        LabCard("Skill information packet") {
             OutlinedTextField(skillName, { skillName = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Skill / technique") })
             OutlinedTextField(
-                chunkPlan,
-                { chunkPlan = it },
-                modifier = Modifier.fillMaxWidth().height(130.dp),
-                label = { Text("Movement chunks / cues / timing / decision rules") }
+                informationPayload,
+                {
+                    informationPayload = it
+                    onSetText(it)
+                },
+                modifier = Modifier.fillMaxWidth().height(150.dp),
+                label = { Text("Information to encode") }
             )
-            Text("Example structure: trigger → perception cue → action chunk 1 → transition → action chunk 2 → finish. Keep the tested sequence specific enough to score.", color = Color(0xFFA9CFC4))
+            Text("Keep the payload procedural: cue → decision → movement sequence → timing → transition → finish.", color = Color(0xFFA9CFC4))
+            OutlinedTextField(
+                packetNotes,
+                { packetNotes = it },
+                modifier = Modifier.fillMaxWidth().height(90.dp),
+                label = { Text("Packet / frequency notes") }
+            )
+            Button(
+                onClick = {
+                    onSetText(informationPayload)
+                    onPrepareText()
+                    status = "Text payload sent to Android TTS and staged for Omega encoding."
+                },
+                enabled = informationPayload.isNotBlank(),
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("PREPARE TEXT AS AUDIO PAYLOAD") }
         }
 
-        LabCard("Audio information channel") {
-            Text(audioUri?.lastPathSegment ?: "No audio selected", color = Color(0xFFD5EAE4))
-            Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text("CHOOSE SKILL AUDIO") }
-            Text("The selected audio is immediately staged inside the existing Omega processing engine, so any current Matrix / scalar / beam method can process it.", color = Color(0xFFA9CFC4))
+        LabCard("Frequency / audio channel") {
+            Text(audioUri?.lastPathSegment ?: "No external audio selected", color = Color(0xFFD5EAE4))
+            Button(onClick = { audioPicker.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) { Text("CHOOSE AUDIO PAYLOAD") }
+            Text("Use the full Omega encoder to choose Matrix, scalar, resonance, carrier, modulation, stacking and looping variables. This screen deliberately does not invent a single 'basal ganglia frequency.'", color = Color(0xFFA9CFC4))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onBeamPlay, enabled = audioUri != null, modifier = Modifier.weight(1f)) { Text("PLAY BEAM") }
+                Button(onClick = onBeamPlay, modifier = Modifier.weight(1f)) { Text("PLAY ENCODED PAYLOAD") }
                 OutlinedButton(onClick = onBeamStop, modifier = Modifier.weight(1f)) { Text("STOP") }
             }
-            OutlinedButton(onClick = onOpenOmega, modifier = Modifier.fillMaxWidth()) { Text("OPEN FULL OMEGA ENCODER") }
-        }
-
-        LabCard("Video information channel") {
-            Text(videoUri?.lastPathSegment ?: "No video selected", color = Color(0xFFD5EAE4))
-            Button(onClick = { videoPicker.launch(arrayOf("video/*")) }, modifier = Modifier.fillMaxWidth()) { Text("CHOOSE SKILL VIDEO") }
-            if (videoUri != null) {
-                AndroidView(
-                    modifier = Modifier.fillMaxWidth().height(240.dp),
-                    factory = { ctx -> VideoView(ctx).also { videoView = it } },
-                    update = { view ->
-                        val key = videoUri.toString()
-                        if (view.tag != key) {
-                            view.tag = key
-                            view.setVideoURI(videoUri)
-                            view.setOnPreparedListener { player -> player.isLooping = loopVideo }
-                        }
-                    }
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { videoView?.start() }, modifier = Modifier.weight(1f)) { Text("PLAY VIDEO") }
-                    OutlinedButton(onClick = { videoView?.pause() }, modifier = Modifier.weight(1f)) { Text("PAUSE") }
-                    OutlinedButton(onClick = { videoView?.seekTo(0) }, modifier = Modifier.weight(1f)) { Text("RESET") }
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Loop video")
-                    Switch(checked = loopVideo, onCheckedChange = { loopVideo = it; videoView?.setOnPreparedListener { p -> p.isLooping = it } })
-                }
-                Button(
-                    onClick = {
-                        videoView?.start()
-                        onBeamPlay()
-                        status = "Dual session running: visual skill stream + processed audio stream."
-                    },
-                    enabled = audioUri != null,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("START VIDEO + BEAM TOGETHER") }
-            }
+            OutlinedButton(onClick = onOpenOmega, modifier = Modifier.fillMaxWidth()) { Text("OPEN FULL OMEGA FREQUENCY ENCODER") }
         }
 
         LabCard("Before / after experiment") {
-            Text("Score one repeatable task before exposure, run the session, then score the same task immediately afterward.", color = Color(0xFFA9CFC4))
+            Text("Use one repeatable test before exposure and the same scoring rule afterward. The app records the trial rather than pretending a subjective feeling proves transfer.", color = Color(0xFFA9CFC4))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(baselineTime, { baselineTime = it }, modifier = Modifier.weight(1f), label = { Text("Baseline time") })
                 OutlinedTextField(baselineAccuracy, { baselineAccuracy = it }, modifier = Modifier.weight(1f), label = { Text("Baseline accuracy") })
@@ -231,12 +202,12 @@ private fun SkillTransferScreen(
             Button(
                 onClick = {
                     val file = File(context.filesDir, "skill-transfer-trials.csv")
-                    if (!file.exists()) file.writeText("timestamp,skill,protocol,audio,video,baseline_time,baseline_accuracy,post_time,post_accuracy,chunks,notes\n")
+                    if (!file.exists()) file.writeText("timestamp,skill,protocol,source_audio,baseline_time,baseline_accuracy,post_time,post_accuracy,payload,packet_notes,notes\n")
                     file.appendText(
                         listOf(
                             System.currentTimeMillis().toString(), skillName, protocol.name,
-                            (audioUri != null).toString(), (videoUri != null).toString(),
-                            baselineTime, baselineAccuracy, postTime, postAccuracy, chunkPlan, notes
+                            (audioUri != null).toString(), baselineTime, baselineAccuracy,
+                            postTime, postAccuracy, informationPayload, packetNotes, notes
                         ).joinToString(",") { csv(it) } + "\n"
                     )
                     status = "Trial saved locally: skill-transfer-trials.csv"
@@ -246,11 +217,11 @@ private fun SkillTransferScreen(
         }
 
         LabCard("Caudate-putamen lead") {
-            Text("Why this region stays in the experiment:", fontWeight = FontWeight.Bold)
+            Text("Why it remains one hypothesis:", fontWeight = FontWeight.Bold)
             Text("• Mainstream: caudate and putamen are central to learning, sequencing, action selection and automatization.")
             Text("• Nolan/Green lead: unusual caudate-putamen connectivity has been publicly reported in an experiencer cohort and a very small number of remote viewers.")
             Text("• Fringe historical lead: Through the Curtain associated the caudate with anomalous information access decades before the modern discussion.")
-            Text("• Current limitation: recent ESP neuroimaging reviews do not identify the basal ganglia as a replicated universal psi signature.", color = Color(0xFFFFD59A))
+            Text("• Frequency question remains open: the lab tests encodings rather than assuming one magic frequency.", color = Color(0xFFFFD59A))
         }
 
         LabCard("Status") { Text(status, color = Color(0xFF76F7D5), fontWeight = FontWeight.Bold) }
