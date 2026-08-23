@@ -25,6 +25,12 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      - name: Report build start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh pr comment 21 --repo "${GITHUB_REPOSITORY}" --body "Omega ELF CI STARTED • run ${GITHUB_RUN_ID} • commit ${GITHUB_SHA} • event ${GITHUB_EVENT_NAME}"
+
       - name: Check out project
         uses: actions/checkout@v4
 
