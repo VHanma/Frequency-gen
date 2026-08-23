@@ -11,8 +11,8 @@ android {
         applicationId = "com.vaan.frequencyremapper"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     buildTypes {
@@ -82,9 +82,9 @@ val applyReliableSaveFix by tasks.registering {
         text = text.replace(
             "status = \"Rendered and saved in Music/FrequencyRemapper.\"",
             """status = if (result.second != null) {
-                    \"Rendered and saved in Downloads/FrequencyRemapper.\"
+                    "Rendered and saved in Downloads/FrequencyRemapper."
                 } else {
-                    \"Rendered successfully. Automatic save failed, so tap SAVE AS… and choose the exact location.\"
+                    "Rendered successfully. Automatic save failed, so tap SAVE AS… and choose the exact location."
                 }"""
         )
 
