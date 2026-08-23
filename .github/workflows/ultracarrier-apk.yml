@@ -8,6 +8,7 @@ on:
       - world-beam-lab-no-file-cap
       - world-beam-lab-collective
       - collective-beam-lab-scalar-clone
+      - omega-elf-lab-clone
   pull_request:
     branches:
       - main
@@ -115,11 +116,3 @@ jobs:
             UltraCarrier.sha256
           if-no-files-found: error
           retention-days: 7
-
-      - name: Report build run to draft PR
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          gh pr comment 18 --repo "${GITHUB_REPOSITORY}" --body "Omega v18 CI report • run ${GITHUB_RUN_ID} • event ${GITHUB_EVENT_NAME} • commit ${GITHUB_SHA} • job status: ${{ job.status }}"
