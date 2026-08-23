@@ -16,13 +16,8 @@ class AudioHardwareChecker(context: Context) {
     fun start(onChanged: (HardwareMode) -> Unit) {
         stop()
         callback = object : AudioDeviceCallback() {
-            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-                onChanged(detect())
-            }
-
-            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-                onChanged(detect())
-            }
+            override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) { onChanged(detect()) }
+            override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) { onChanged(detect()) }
         }
         audioManager.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         onChanged(detect())
@@ -36,12 +31,7 @@ class AudioHardwareChecker(context: Context) {
     fun detect(): HardwareMode {
         val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
         val external = outputs.filter { it.type in EXTERNAL_TYPES }.maxByOrNull(::priority)
-
-        val nativeRate = audioManager
-            .getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)
-            ?.toIntOrNull()
-            ?.coerceIn(44_100, 192_000)
-            ?: 48_000
+        val nativeRate = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE)?.toIntOrNull()?.coerceIn(44_100, 192_000) ?: 48_000
 
         if (external == null) {
             val builtIn = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
@@ -54,7 +44,7 @@ class AudioHardwareChecker(context: Context) {
                 carrierMinHz = 13_500f,
                 carrierMaxHz = min(22_000f, rate * 0.458f),
                 external = false,
-                detail = "Primary output reports ${rate / 1000.0} kHz. Carrier ceiling is 22 kHz."
+                detail = "Primary output reports ${rate / 1000.0} kHz. Internal carrier ceiling remains 22 kHz."
             )
         }
 
@@ -71,14 +61,15 @@ class AudioHardwareChecker(context: Context) {
 
         val name = external.productName?.toString().orEmpty().ifBlank { typeName(external.type) }
         val report = if (reported.isEmpty()) "sample rates not reported" else "reports ${reported.joinToString()} Hz"
+        val pcmMax = rate * 0.45f
         return HardwareMode(
-            label = if (rate > 48_000) "External high-resolution mode" else "External listening mode",
+            label = if (rate > 48_000) "External literal-wideband mode" else "External listening mode",
             outputDevice = external,
             requestedSampleRate = rate,
-            carrierMinHz = 13_500f,
-            carrierMaxHz = min(40_000f, rate * 0.45f),
+            carrierMinHz = if (rate > 48_000) 80f else 13_500f,
+            carrierMaxHz = if (rate > 48_000) pcmMax else min(22_000f, pcmMax),
             external = true,
-            detail = "$name, $report. Requesting ${rate / 1000.0} kHz."
+            detail = if (rate > 48_000) "$name, $report. Requesting ${rate / 1000.0} kHz; literal PCM carrier control available from 80 Hz to about ${"%.1f".format(pcmMax / 1000f)} kHz. Sub-80-Hz references use the low-rate/envelope control." else "$name, $report. Requesting ${rate / 1000.0} kHz."
         )
     }
 
