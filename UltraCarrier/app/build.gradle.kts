@@ -3,17 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Omega v18 Matrix + simultaneous Layer Stack build.
+// Separate Omega ELF Lab clone based on v18 Matrix + simultaneous Layer Stack.
 android {
     namespace = "com.vaan.ultracarrier"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.ultracarrier.collectivebeamlab.omega"
+        applicationId = "com.vaan.ultracarrier.collectivebeamlab.omegaelf"
         minSdk = 26
         targetSdk = 36
-        versionCode = 18
-        versionName = "18.0.0-collective-omega-matrix-stack"
+        versionCode = 19
+        versionName = "19.0.0-omega-elf-lab-clone"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
