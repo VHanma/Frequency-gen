@@ -8,6 +8,7 @@ on:
       - world-beam-lab-no-file-cap
       - world-beam-lab-collective
       - collective-beam-lab-scalar-clone
+      - matrix-skill-transfer-clone
   pull_request:
     branches:
       - main
@@ -75,7 +76,7 @@ jobs:
           BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
           UNSIGNED="UltraCarrier/app/build/outputs/apk/release/app-release-unsigned.apk"
           ALIGNED="UltraCarrier-aligned.apk"
-          FINAL="UltraCarrier.apk"
+          FINAL="UltraCarrier-SkillTransferLab.apk"
 
           "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
 
@@ -87,7 +88,7 @@ jobs:
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -dname "CN=UltraCarrier Personal Build, OU=Android, O=VHanma, C=US"
+            -dname "CN=UltraCarrier Skill Transfer Lab, OU=Android, O=VHanma, C=US"
 
           "$BUILD_TOOLS/apksigner" sign \
             --ks install-key.jks \
@@ -103,16 +104,16 @@ jobs:
           "$BUILD_TOOLS/zipalign" -c -v 4 "$FINAL"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
           unzip -t "$FINAL" >/dev/null
-          sha256sum "$FINAL" | tee UltraCarrier.sha256
+          sha256sum "$FINAL" | tee UltraCarrier-SkillTransferLab.sha256
 
       - name: Upload finished APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: UltraCarrier-installable-apk
+          name: UltraCarrier-SkillTransferLab-installable-apk
           path: |
-            UltraCarrier.apk
-            UltraCarrier.sha256
+            UltraCarrier-SkillTransferLab.apk
+            UltraCarrier-SkillTransferLab.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -122,4 +123,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh pr comment 18 --repo "${GITHUB_REPOSITORY}" --body "Omega v18 CI report • run ${GITHUB_RUN_ID} • event ${GITHUB_EVENT_NAME} • commit ${GITHUB_SHA} • job status: ${{ job.status }}"
+          gh pr comment 20 --repo "${GITHUB_REPOSITORY}" --body "Skill Transfer Lab CI report • run ${GITHUB_RUN_ID} • event ${GITHUB_EVENT_NAME} • commit ${GITHUB_SHA} • job status: ${{ job.status }}"
