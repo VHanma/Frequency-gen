@@ -1,2 +1,2 @@
-Frequency Remapper v1.0 build trigger.
-Purpose: force the PR build after the base-branch compiler workflow was installed.
+Frequency Remapper v1.2.0 stable live/save rebuild trigger.
+Crash-safe live preview + durable verified public export.
