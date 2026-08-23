@@ -6,7 +6,7 @@ on:
       - frequency-remapper-apk
   pull_request:
     branches:
-      - main
+      - ultracarrier-apk-build
   workflow_dispatch:
 
 permissions:
