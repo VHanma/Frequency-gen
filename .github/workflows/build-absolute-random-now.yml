@@ -1,6 +1,9 @@
 name: Build Absolute Random Selector APK Now
 
 on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-absolute-random-now.yml']
   issues:
     types: [opened]
   workflow_dispatch:
@@ -11,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD ABSOLUTE RANDOM]')
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD ABSOLUTE RANDOM]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -65,8 +68,8 @@ jobs:
             AbsoluteRandomSelector-v1.0.sha256
           retention-days: 14
 
-      - name: Report run to trigger issue
-        if: always() && github.event_name == 'issues'
+      - name: Report build run
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh issue comment "${{ github.event.issue.number }}" --repo "$GITHUB_REPOSITORY" --body "Absolute Random Selector APK build run: ${GITHUB_RUN_ID} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        run: gh issue comment 30 --repo "$GITHUB_REPOSITORY" --body "Absolute Random Selector APK build run: ${GITHUB_RUN_ID} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
