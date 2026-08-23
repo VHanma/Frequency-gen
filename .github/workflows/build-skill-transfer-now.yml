@@ -1,0 +1,63 @@
+name: Build Skill Transfer APK Now
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[BUILD APK NOW]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out skill transfer build branch
+        uses: actions/checkout@v4
+        with:
+          ref: ultracarrier-apk-build
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Build release APK
+        working-directory: UltraCarrier
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          IN="UltraCarrier/app/build/outputs/apk/release/app-release-unsigned.apk"
+          "$BT/zipalign" -f -p 4 "$IN" SkillTransfer-aligned.apk
+          keytool -genkeypair -noprompt -keystore skilltransfer.jks -storepass skilltransfer -keypass skilltransfer -alias skilltransfer -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Skill Transfer Lab, O=VHanma, C=US"
+          "$BT/apksigner" sign --ks skilltransfer.jks --ks-key-alias skilltransfer --ks-pass pass:skilltransfer --key-pass pass:skilltransfer --out UltraCarrier-SkillTransferLab.apk SkillTransfer-aligned.apk
+          "$BT/apksigner" verify --verbose UltraCarrier-SkillTransferLab.apk
+          sha256sum UltraCarrier-SkillTransferLab.apk > UltraCarrier-SkillTransferLab.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltraCarrier-SkillTransferLab-installable-apk
+          path: |
+            UltraCarrier-SkillTransferLab.apk
+            UltraCarrier-SkillTransferLab.sha256
+          retention-days: 7
