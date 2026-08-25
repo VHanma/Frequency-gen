@@ -8,7 +8,7 @@
         android:theme="@android:style/Theme.Material.NoActionBar">
 
         <activity
-            android:name=".MainActivityV5"
+            android:name=".MainActivityV6"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
