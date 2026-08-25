@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out Absolute Random Selector branch
+      - name: Check out requested app branch
         uses: actions/checkout@v4
         with:
-          ref: random-selector-app
+          ref: ${{ github.head_ref || 'random-selector-app' }}
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -71,7 +71,7 @@ jobs:
           retention-days: 14
 
       - name: Report build run
-        if: always()
+        if: always() && github.event_name == 'issues'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue comment 30 --repo "$GITHUB_REPOSITORY" --body "Absolute Random Selector APK build run: ${GITHUB_RUN_ID} • status: ${{ job.status }} • https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
