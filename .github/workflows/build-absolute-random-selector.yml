@@ -1,8 +1,8 @@
-name: Build Absolute Random Selector APK
+name: Build Absolute Random Tarot Clone APK
 
 on:
   push:
-    branches: [random-selector-app]
+    branches: [random-selector-tarot-clone]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -16,10 +16,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out random selector branch
+      - name: Check out tarot clone branch
         uses: actions/checkout@v4
         with:
-          ref: random-selector-app
+          ref: random-selector-tarot-clone
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -50,17 +50,17 @@ jobs:
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
           IN="AbsoluteRandomSelector/app/build/outputs/apk/release/app-release-unsigned.apk"
-          "$BT/zipalign" -f -p 4 "$IN" AbsoluteRandomSelector-aligned.apk
-          keytool -genkeypair -noprompt -keystore absolute-random.jks -storepass absoluterandom -keypass absoluterandom -alias absoluterandom -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Absolute Random Selector, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks absolute-random.jks --ks-key-alias absoluterandom --ks-pass pass:absoluterandom --key-pass pass:absoluterandom --out AbsoluteRandomSelector-v1.0.apk AbsoluteRandomSelector-aligned.apk
-          "$BT/apksigner" verify --verbose AbsoluteRandomSelector-v1.0.apk
-          sha256sum AbsoluteRandomSelector-v1.0.apk > AbsoluteRandomSelector-v1.0.sha256
+          "$BT/zipalign" -f -p 4 "$IN" AbsoluteRandomTarot-aligned.apk
+          keytool -genkeypair -noprompt -keystore absolute-random-tarot.jks -storepass absolutetarot -keypass absolutetarot -alias absolutetarot -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Absolute Random Tarot, O=VHanma, C=US"
+          "$BT/apksigner" sign --ks absolute-random-tarot.jks --ks-key-alias absolutetarot --ks-pass pass:absolutetarot --key-pass pass:absolutetarot --out AbsoluteRandomTarot-v1.0.apk AbsoluteRandomTarot-aligned.apk
+          "$BT/apksigner" verify --verbose AbsoluteRandomTarot-v1.0.apk
+          sha256sum AbsoluteRandomTarot-v1.0.apk > AbsoluteRandomTarot-v1.0.sha256
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: AbsoluteRandomSelector-installable-apk
+          name: AbsoluteRandomTarot-installable-apk
           path: |
-            AbsoluteRandomSelector-v1.0.apk
-            AbsoluteRandomSelector-v1.0.sha256
+            AbsoluteRandomTarot-v1.0.apk
+            AbsoluteRandomTarot-v1.0.sha256
           retention-days: 14
