@@ -74,17 +74,17 @@ jobs:
           IN="FrequencyRemapper/app/build/outputs/apk/release/app-release-unsigned.apk"
           "$BT/zipalign" -f -p 4 "$IN" FrequencyRemapper-aligned.apk
           keytool -genkeypair -noprompt -keystore frequency-remapper.jks -storepass frequencyremapper -keypass frequencyremapper -alias frequencyremapper -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Frequency Remapper, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks frequency-remapper.jks --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.3.0.apk FrequencyRemapper-aligned.apk
-          "$BT/apksigner" verify --verbose FrequencyRemapper-v1.3.0.apk
-          sha256sum FrequencyRemapper-v1.3.0.apk > FrequencyRemapper-v1.3.0.sha256
+          "$BT/apksigner" sign --ks frequency-remapper.jks --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.4.0.apk FrequencyRemapper-aligned.apk
+          "$BT/apksigner" verify --verbose FrequencyRemapper-v1.4.0.apk
+          sha256sum FrequencyRemapper-v1.4.0.apk > FrequencyRemapper-v1.4.0.sha256
 
       - name: Upload installable APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: FrequencyRemapper-v1.3.0-phase-labels-apk
+          name: FrequencyRemapper-v1.4.0-scalable-batch-apk
           path: |
-            FrequencyRemapper-v1.3.0.apk
-            FrequencyRemapper-v1.3.0.sha256
+            FrequencyRemapper-v1.4.0.apk
+            FrequencyRemapper-v1.4.0.sha256
           if-no-files-found: error
           retention-days: 14
