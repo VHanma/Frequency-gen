@@ -8,7 +8,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.absoluterandom"
+        applicationId = "com.vaan.absoluterandom.tarotclone"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
