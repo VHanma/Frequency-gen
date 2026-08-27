@@ -43,6 +43,12 @@ jobs:
         with:
           gradle-version: "9.4.1"
 
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/frequency-remapper.jks
+          key: frequency-remapper-signing-v1
+
       - name: Build release APK
         id: gradle_build
         working-directory: FrequencyRemapper
@@ -65,17 +71,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Sign APK
+      - name: Sign APK with persistent key
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
           IN="FrequencyRemapper/app/build/outputs/apk/release/app-release-unsigned.apk"
+          KS=".signing/frequency-remapper.jks"
+          mkdir -p .signing
+          if [ ! -f "$KS" ]; then
+            keytool -genkeypair -noprompt -keystore "$KS" -storepass frequencyremapper -keypass frequencyremapper -alias frequencyremapper -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Frequency Remapper, O=VHanma, C=US"
+          fi
           "$BT/zipalign" -f -p 4 "$IN" FrequencyRemapper-aligned.apk
-          keytool -genkeypair -noprompt -keystore frequency-remapper.jks -storepass frequencyremapper -keypass frequencyremapper -alias frequencyremapper -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Frequency Remapper, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks frequency-remapper.jks --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.6.0.apk FrequencyRemapper-aligned.apk
-          "$BT/apksigner" verify --verbose FrequencyRemapper-v1.6.0.apk
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.6.0.apk FrequencyRemapper-aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs FrequencyRemapper-v1.6.0.apk
           sha256sum FrequencyRemapper-v1.6.0.apk > FrequencyRemapper-v1.6.0.sha256
 
       - name: Upload installable APK
