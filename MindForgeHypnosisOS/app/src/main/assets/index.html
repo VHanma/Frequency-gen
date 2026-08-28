@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>MindForge Hypnosis OS</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="title">MindForge Hypnosis OS <span class="pill good">v2</span></div><div class="sub">Offline self-hypnosis lab. Build custom inductions, deepeners, suggestion loops, anchors, rehearsal, audio/visual stacks, and reusable programs.</div></header>
+<nav class="tabs">
+<button class="tab active" data-tab="home" onclick="tab('home')">Home</button>
+<button class="tab" data-tab="builder" onclick="tab('builder')">Builder</button>
+<button class="tab" data-tab="programs" onclick="tab('programs')">Programs</button>
+<button class="tab" data-tab="methods" onclick="tab('methods')">Methods</button>
+<button class="tab" data-tab="analytics" onclick="tab('analytics')">Adaptive</button>
+<button class="tab" data-tab="settings" onclick="tab('settings')">Settings</button>
+</nav>
+
+<section id="home" class="page active">
+<div class="grid two">
+<div class="card hero"><h2>Quick Forge</h2><div class="tiny">Pick a target, then MindForge loads a full stack you can edit before starting.</div><div class="presetGrid" id="presetGrid"></div></div>
+<div class="card"><h2>Adaptive Recommendation</h2><div id="bestStack" class="tiny">Complete and rate sessions to teach the app which stack works best for you.</div><div class="btns"><button class="good" onclick="applyBestStack()">Apply Best Stack</button><button onclick="tab('analytics')">See Scores</button></div><div class="divider"></div><div class="row"><div class="stat"><div class="tiny">Sessions</div><div class="score" id="sessionCount">0</div></div><div class="stat"><div class="tiny">Completed</div><div class="score" id="completionRate">0%</div></div></div></div>
+</div>
+<div class="card"><h2>Instant Program</h2><div class="field"><label>What do you want to install or strengthen?</label><textarea id="quickGoal" placeholder="Example: I enter calm precision the moment pressure rises, see openings clearly, and execute the next action cleanly."></textarea></div><div class="btns"><button class="primary" onclick="quickForge()">Build It</button><button class="ghost" onclick="randomStack()">Random Experimental Stack</button></div></div>
+</section>
+
+<section id="builder" class="page">
+<div class="grid two">
+<div class="card"><h2>1. Programming Target</h2>
+<div class="field"><label>Program name</label><input id="name" value="Absolute Focus Installation"></div>
+<div class="field"><label>Desired program / behavior</label><textarea id="goal">I enter deep focus fast, stay locked onto the mission, and act with calm precision.</textarea></div>
+<div class="field"><label>Evidence of success</label><textarea id="evidence">I notice distractions without following them, return instantly, and complete the next useful action.</textarea></div>
+<div class="row"><div class="field"><label>Trigger cue</label><input id="cue" value="I take one slow inhale and lightly press thumb to finger"></div><div class="field"><label>Context</label><input id="context" value="training, studying, creating, or performing"></div></div>
+<div class="row"><div class="field"><label>Anchor type</label><select id="anchorType"><option>Physical touch</option><option>Breath</option><option>Word or phrase</option><option>Visual cue</option><option>Sound cue</option><option>Posture</option><option>Custom</option></select></div><div class="field"><label>Cancellation / reset cue</label><input id="cancelCue" value="I say reset and take a normal breath"></div></div>
+<div class="switches"><label class="chip"><input id="useImplementation" type="checkbox" checked> If/when → response</label><label class="chip"><input id="useIdentity" type="checkbox" checked> Identity layer</label><label class="chip"><input id="useRehearsal" type="checkbox" checked> Mental rehearsal</label><label class="chip"><input id="useFuture" type="checkbox" checked> Future pacing</label><label class="chip"><input id="useCompounding" type="checkbox" checked> Compounding</label></div>
+</div>
+
+<div class="card"><h2>2. Hypnosis Stack</h2>
+<div class="row"><div class="field"><label>Induction</label><select id="induction"></select></div><div class="field"><label>Deepener</label><select id="deepener"></select></div></div>
+<div class="row"><div class="field"><label>Primary suggestion style</label><select id="style"></select></div><div class="field"><label>Secondary style</label><select id="style2"></select></div></div>
+<div class="switches"><label class="chip"><input id="blendStyles" type="checkbox" checked> Blend styles</label><label class="chip"><input id="fractionate" type="checkbox"> Fractionation loop</label><label class="chip"><input id="ideomotor" type="checkbox"> Ideomotor imagination</label></div>
+<div class="row"><div class="field"><label>Suggestion rounds <span class="rangeval" id="repVal">8</span></label><input type="range" id="reps" min="2" max="20" value="8" oninput="repVal.textContent=this.value;estimate()"></div><div class="field"><label>Ending</label><select id="ending"><option>Wake energized</option><option>Stay relaxed</option><option>Sleep descent</option></select></div></div>
+<div class="btns"><button onclick="randomStack()">Randomize Stack</button><button onclick="applyBestStack()">Use Best Rated</button></div>
+</div>
+
+<div class="card"><h2>3. Voice + Timing</h2>
+<div class="field"><label>Voice</label><select id="voice"><option value="">Device default</option></select></div>
+<div class="row3"><div class="field"><label>Rate <span id="rateVal" class="rangeval">0.82</span></label><input type="range" id="rate" min="0.35" max="1.50" step="0.01" value="0.82" oninput="rateVal.textContent=this.value;estimate()"></div><div class="field"><label>Pitch <span id="pitchVal" class="rangeval">0.92</span></label><input type="range" id="pitch" min="0.55" max="1.45" step="0.01" value="0.92" oninput="pitchVal.textContent=this.value"></div><div class="field"><label>Gap seconds</label><input type="number" id="gap" value="1.8" min="0" max="12" step="0.1" oninput="estimate()"></div></div>
+<div class="switches"><label class="chip"><input id="hapticTransitions" type="checkbox"> Haptic phase cues</label><label class="chip"><input id="showText" type="checkbox" checked> Show spoken text</label><label class="chip"><input id="eyesClosed" type="checkbox"> Eyes-closed mode</label></div>
+</div>
+
+<div class="card"><h2>4. Audio + Visual Engine</h2>
+<div class="row"><div class="field"><label>Audio mode</label><select id="audio"><option value="none">None</option><option value="binaural">Binaural beat</option><option value="iso">Isochronic pulse</option><option value="monaural">Monaural pulse</option><option value="bilateral">Bilateral sweep</option><option value="pink">Pink noise</option><option value="brown">Brown noise</option><option value="white">White noise</option><option value="drone">Soft drone</option><option value="layered">Layered beat + noise</option></select></div><div class="field"><label>Visual mode</label><select id="visual"><option value="breathe">Breathing orb</option><option value="fixation">Eye fixation dot</option><option value="spiral">Slow spiral</option><option value="tunnel">Tunnel descent</option><option value="pendulum">Pendulum</option><option value="candle">Candle flame</option><option value="pulseText">Pulsing focus word</option><option value="dark">Dark / eyes closed</option></select></div></div>
+<div class="row3"><div class="field"><label>Carrier Hz</label><input type="number" id="carrier" value="220" min="40" max="1000"></div><div class="field"><label>Beat / pulse Hz</label><input type="number" id="beat" value="6" min="0.2" max="40" step="0.1"></div><div class="field"><label>Audio volume <span id="volVal" class="rangeval">6%</span></label><input type="range" id="volume" min="0" max="0.18" step="0.005" value="0.06" oninput="volVal.textContent=Math.round(this.value*100)+'%'"></div></div>
+<div class="row"><div class="field"><label>Sweep speed</label><input type="number" id="sweep" value="8" min="2" max="30" step="0.5"></div><div class="field"><label>Screen brightness <span id="brightVal" class="rangeval">45%</span></label><input type="range" id="brightness" min="0.05" max="1" step="0.05" value="0.45" oninput="brightVal.textContent=Math.round(this.value*100)+'%'"></div></div>
+<div class="btns"><button class="small" onclick="audioPreset('delta')">2 Hz</button><button class="small" onclick="audioPreset('theta')">5 Hz</button><button class="small" onclick="audioPreset('alpha')">10 Hz</button><button class="small" onclick="audioPreset('beta')">18 Hz</button><button class="small" onclick="audioPreset('gamma')">40 Hz</button></div>
+<div class="tiny">Audio pulse labels are controls, not guaranteed mental-state switches. Binaural mode uses separate left/right tones and therefore assumes stereo headphones.</div>
+</div>
+</div>
+
+<div class="card"><h2>5. Compile + Edit</h2><div id="stack" class="tiny"></div><div class="row"><div class="stat"><div class="tiny">Estimated length</div><b id="estimate">0 min</b></div><div class="stat"><div class="tiny">Segments</div><b id="segmentCount">0</b></div></div><div class="field"><label>Final script</label><textarea id="scriptEditor" class="scriptEdit"></textarea></div><div class="btns"><button class="primary" onclick="generate()">Compile</button><button class="good" onclick="startCurrent()">Start Session</button><button class="warn" onclick="saveProgram()">Save Program</button><button class="ghost" onclick="copyScript()">Copy</button><button class="ghost" onclick="exportScript()">TXT</button><button class="ghost" onclick="exportJson()">Program JSON</button></div></div>
+</section>
+
+<section id="programs" class="page">
+<div class="card"><h2>Program Vault</h2><div class="btns"><button class="good" onclick="exportVault()">Export Entire Vault</button><button onclick="document.getElementById('importFile').click()">Import JSON</button><input id="importFile" type="file" accept="application/json,.json" class="hide" onchange="importVault(event)"></div><div class="divider"></div><div id="saved" class="grid"></div></div>
+</section>
+
+<section id="methods" class="page">
+<div class="card search"><div class="field"><label>Search methods</label><input id="methodSearch" placeholder="eye fixation, rehearsal, anchor, confusion..." oninput="renderMethods()"></div><div class="row"><div class="field"><label>Category</label><select id="methodCategory" onchange="renderMethods()"><option>All</option><option>Induction</option><option>Deepener</option><option>Suggestion</option><option>Integration</option><option>Experimental</option><option>Audio/Visual</option></select></div><div class="field"><label>Method count</label><input id="methodCount" value="0" readonly></div></div></div><div class="card"><h2>Method Library</h2><div class="tiny">Each module explains what it does inside the app and how to customize it for a target.</div><div id="methodList"></div></div>
+</section>
+
+<section id="analytics" class="page">
+<div class="grid two"><div class="card"><h2>Adaptive Tuner</h2><div class="tiny">Ratings stay on-device. MindForge averages your completed-session scores by induction, deepener, suggestion style, audio, and visual mode.</div><div id="adaptiveSummary" class="grid" style="margin-top:12px"></div></div><div class="card"><h2>Session History</h2><div id="hist" class="grid"></div></div></div>
+</section>
+
+<section id="settings" class="page">
+<div class="grid two"><div class="card"><h2>Interface</h2><div class="switches"><label class="chip"><input id="readableMode" type="checkbox" onchange="saveSettings()"> Readable text mode</label><label class="chip"><input id="reduceMotion" type="checkbox" onchange="saveSettings()"> Reduce visual motion</label><label class="chip"><input id="immersiveMode" type="checkbox" checked onchange="saveSettings()"> Immersive player</label></div><div class="field"><label>Default session brightness</label><input id="defaultBrightness" type="range" min="0.05" max="1" step="0.05" value="0.45" onchange="saveSettings()"></div></div><div class="card"><h2>Data</h2><div class="btns"><button onclick="exportVault()">Export backup</button><button class="bad" onclick="clearHistory()">Clear history</button><button class="bad" onclick="clearAll()">Factory reset app data</button></div><div class="tiny" id="nativeInfo"></div></div></div>
+<div class="card"><h2>About the Engine</h2><div class="note">MindForge is designed for self-directed sessions. It separates induction, deepening, suggestion wording, implementation-intention cues, rehearsal, future pacing, and reorientation so each can be tuned independently instead of hiding everything inside one fixed recording.</div></div>
+</section>
+
+<div id="player" class="player"><div id="stage" class="stage breathe"><div id="phase" class="phase">Preparation</div><div class="orb"></div><div id="phrase" class="phrase">Ready.</div></div><div class="control"><div class="progress"><div id="bar" class="bar"></div></div><div class="pmeta"><span class="tiny" id="pmeta">0 / 0</span><span class="tiny" id="elapsed">00:00</span></div><div class="btns"><button onclick="prevSegment()">◀ Back</button><button class="good" id="resumeBtn" onclick="resumeSession()">Resume</button><button class="warn" id="pauseBtn" onclick="pauseSession()">Pause</button><button onclick="nextSegment()">Next ▶</button><button class="bad" onclick="stopSession(true)">Stop</button></div></div></div>
+
+<div id="feedback" class="modal"><div class="sheet"><h2>Rate this stack</h2><div class="tiny">Your ratings teach the adaptive tuner what works best for you.</div><div class="field"><label>Depth / absorption</label><div class="stars" id="depthStars"></div></div><div class="field"><label>Suggestion fit</label><div class="stars" id="fitStars"></div></div><div class="field"><label>Overall usefulness</label><div class="stars" id="useStars"></div></div><div class="field"><label>Notes</label><textarea id="feedbackNotes" placeholder="What felt strongest? What should change next time?"></textarea></div><div class="btns"><button class="good" onclick="saveFeedback()">Save Rating</button><button onclick="closeFeedback()">Skip</button></div></div></div>
+<div class="footerline">MindForge Hypnosis OS v2.0 • Offline-first • Data stored locally on device</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
