@@ -7,12 +7,12 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:allowBackup="true"
-        android:label="InfoBeam Ω NeuroThought"
+        android:label="InfoBeam Ω InnerSpeech"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".NeuroBeamActivity"
+            android:name=".InnerSpeechActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
