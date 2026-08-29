@@ -11,11 +11,17 @@ import android.os.Build;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Head-locked private speech renderer.
- * v1.3 uses parallel low/body/formant bands, dual micro-delay cranial coloration,
- * envelope-driven breath texture, and dense soft-limited compression. The final
- * output remains hard limited below full scale and Android's normal volume control
- * still governs acoustic level.
+ * v2 InnerSpeech renderer.
+ *
+ * The old engine started with ordinary voiced TTS and then colored it. This engine
+ * changes the source itself. A multi-band analysis/synthesis vocoder extracts the
+ * moving speech/formant envelopes, discards most of the original pitch/harmonic
+ * identity, and rebuilds speech from noise-band excitation. A small low-frequency
+ * body path and a tiny dry path are mixed back only where a profile asks for them.
+ *
+ * Result: much less "person speaking through headphones" and much more compact,
+ * pitch-poor, subvocal/whisper-like speech. Playback remains diotic on headphones
+ * to minimize external left/right location cues.
  */
 public final class ThoughtAudio {
     public enum Profile {
@@ -24,7 +30,8 @@ public final class ThoughtAudio {
         SKULL_VOICE("Skull Voice"),
         WHISPER_CORTEX("Whisper Cortex"),
         HYBRID("Hybrid Neural"),
-        CORTEX_LOCK_EXTREME("Cortex Lock EXTREME");
+        CORTEX_LOCK_EXTREME("Cortex Lock EXTREME"),
+        PURE_INNER_SPEECH("PURE INNER SPEECH");
 
         public final String label;
         Profile(String label) { this.label = label; }
@@ -44,7 +51,7 @@ public final class ThoughtAudio {
         }
 
         public Settings(Profile profile, float intensity, float bone, float whisper, float depth, float impact) {
-            this.profile = profile == null ? Profile.HYBRID : profile;
+            this.profile = profile == null ? Profile.PURE_INNER_SPEECH : profile;
             this.intensity = clamp01(intensity);
             this.bone = clamp01(bone);
             this.whisper = clamp01(whisper);
@@ -53,7 +60,7 @@ public final class ThoughtAudio {
         }
 
         public static Settings defaultHybrid(float intensity) {
-            return new Settings(Profile.HYBRID, intensity, 0.68f, 0.20f, 0.84f, 0.78f);
+            return new Settings(Profile.PURE_INNER_SPEECH, intensity, 0.34f, 0.62f, 0.92f, 0.88f);
         }
     }
 
@@ -87,7 +94,122 @@ public final class ThoughtAudio {
     public void play(Context context, PcmWav.Data pcm, Settings settings, Listener listener) {
         stop();
         stopped.set(false);
-        new Thread(() -> render(context.getApplicationContext(), pcm, settings, listener), "InfoBeam-CortexLock").start();
+        new Thread(() -> {
+            try {
+                listener.onStatus("RESYNTHESIZING • removing normal voice pitch…");
+                PcmWav.Data inner = resynthesize(pcm, settings);
+                render(context.getApplicationContext(), inner, settings, listener);
+            } catch (Throwable t) {
+                listener.onStatus("Thought playback error: " + safeMessage(t));
+                stopped.set(true);
+                listener.onStopped();
+            }
+        }, "InfoBeam-InnerSpeech-v2").start();
+    }
+
+    /**
+     * Public so the direct parametric beam can carry the same pitch-stripped source
+     * instead of ordinary TTS.
+     */
+    public static PcmWav.Data resynthesize(PcmWav.Data pcm, Settings cfg) {
+        if (pcm == null || pcm.samples == null || pcm.samples.length == 0) {
+            throw new IllegalArgumentException("Speech source is empty.");
+        }
+
+        final int rate = pcm.sampleRate;
+        final float[] src = pcm.samples;
+        final float[] out = new float[src.length];
+
+        final double[] wantedCenters = {180, 290, 450, 680, 980, 1380, 1950, 2750, 3850, 5100};
+        int usable = 0;
+        for (double f : wantedCenters) if (f < rate * 0.43) usable++;
+        if (usable < 5) usable = Math.min(5, wantedCenters.length);
+
+        Biquad[] analysis = new Biquad[usable];
+        Biquad[] synthesis = new Biquad[usable];
+        OnePoleLowPass[] envelopes = new OnePoleLowPass[usable];
+        float[] weights = new float[usable];
+
+        for (int b = 0; b < usable; b++) {
+            double center = Math.min(wantedCenters[b], rate * 0.41);
+            double q = b < 2 ? 0.72 : (b < 6 ? 0.90 : 1.05);
+            analysis[b] = Biquad.bandPass(rate, center, q);
+            synthesis[b] = Biquad.bandPass(rate, center, q);
+            envelopes[b] = new OnePoleLowPass(rate, 38.0 + b * 1.2);
+            weights[b] = bandWeight(b, usable);
+        }
+
+        OnePoleHighPass dcHp = new OnePoleHighPass(rate, 72.0);
+        OnePoleLowPass boneLp = new OnePoleLowPass(rate, 940.0);
+        OnePoleLowPass envSlow = new OnePoleLowPass(rate, 14.0);
+        OnePoleLowPass envFast = new OnePoleLowPass(rate, 48.0);
+        OnePoleLowPass noiseBody = new OnePoleLowPass(rate, 1050.0);
+        OnePoleHighPass airHp = new OnePoleHighPass(rate, 2100.0);
+
+        int rng = 0x73A91F2D;
+        float previousDry = 0f;
+        float profileDry = dryMix(cfg.profile);
+        float profileVoc = vocoderMix(cfg.profile);
+        float profileBone = boneMix(cfg.profile);
+        float profileAir = airMix(cfg.profile);
+
+        for (int i = 0; i < src.length; i++) {
+            float dry = dcHp.process(src[i]);
+            float overall = envSlow.process(Math.abs(dry));
+            float fast = envFast.process(Math.abs(dry));
+
+            rng = rng * 1664525 + 1013904223;
+            float white = (((rng >>> 8) & 0x00ffffff) / 8388607.5f) - 1f;
+
+            float voc = 0f;
+            for (int b = 0; b < usable; b++) {
+                float analyzed = analysis[b].process(dry);
+                float env = envelopes[b].process(Math.abs(analyzed));
+
+                // Nonlinear envelope expansion raises quiet consonants while keeping vowels compact.
+                float shapedEnv = (float) Math.pow(Math.max(0f, env), 0.72);
+                float excited = synthesis[b].process(white);
+                voc += excited * shapedEnv * weights[b];
+            }
+
+            // Normalize channel-vocoder energy and drive it by speech presence.
+            voc *= 3.2f / Math.max(5, usable);
+            voc *= Math.min(1.35f, 0.28f + fast * 6.6f);
+
+            float bone = boneLp.process(dry);
+            float breath = airHp.process(white - noiseBody.process(white));
+            breath *= Math.min(1f, fast * 7.5f);
+
+            float transientEdge = dry - previousDry;
+            previousDry = dry;
+
+            float mix = voc * profileVoc
+                    + dry * profileDry
+                    + bone * profileBone * cfg.bone
+                    + breath * profileAir * cfg.whisper;
+
+            // Depth is implemented as a compact low/body bias, not a room/reverb effect.
+            mix += bone * cfg.depth * 0.10f;
+
+            // Quiet-phoneme lift. This is intentionally based on the source envelope,
+            // so speech remains legible even after pitch stripping.
+            float target = 0.19f + cfg.impact * 0.08f;
+            float upward = target / (0.018f + overall);
+            upward = clampRange(upward, 0.90f, 2.1f + cfg.impact * 2.8f);
+            mix *= 0.72f + upward * (0.28f + cfg.impact * 0.16f);
+
+            // Consonant edge survives the noise resynthesis without reintroducing a voiced carrier.
+            mix += transientEdge * (0.025f + cfg.impact * 0.045f);
+
+            double drive = 1.65 + cfg.intensity * 1.85 + cfg.impact * 0.95;
+            if (cfg.profile == Profile.PURE_INNER_SPEECH) drive += 0.35;
+            if (cfg.profile == Profile.CORTEX_LOCK_EXTREME) drive += 0.55;
+
+            out[i] = (float) Math.tanh(mix * drive);
+        }
+
+        normalizeForSpeech(out, 0.86f);
+        return new PcmWav.Data(out, rate);
     }
 
     private void render(Context context, PcmWav.Data pcm, Settings cfg, Listener listener) {
@@ -138,115 +260,30 @@ public final class ThoughtAudio {
             double step = pcm.sampleRate / (double) outRate;
             long totalFrames = Math.max(1L, (long) Math.ceil(pcm.samples.length / step));
             short[] block = new short[1024 * channels];
-            int fadeFrames = Math.max(1, (int) (outRate * 0.012));
-
-            OnePoleHighPass hp = new OnePoleHighPass(outRate, 58.0);
-            OnePoleLowPass topLp = new OnePoleLowPass(outRate, profileTopHz(cfg.profile));
-            OnePoleLowPass bassLp = new OnePoleLowPass(outRate, 520.0);
-            OnePoleLowPass bodyLp = new OnePoleLowPass(outRate, 1120.0);
-            OnePoleLowPass formantLp = new OnePoleLowPass(outRate, 2450.0);
-            OnePoleLowPass envFast = new OnePoleLowPass(outRate, 30.0);
-            OnePoleLowPass envSlow = new OnePoleLowPass(outRate, 7.0);
-            OnePoleLowPass noiseLow = new OnePoleLowPass(outRate, 1150.0);
-            DelayLine microA = new DelayLine(Math.max(3, (int) (outRate * 0.00018)));
-            DelayLine microB = new DelayLine(Math.max(5, (int) (outRate * 0.00062)));
-
+            int fadeFrames = Math.max(1, (int) (outRate * 0.010));
             double srcPos = 0.0;
             long frame = 0;
-            int rng = 0x6F2A4B19;
-            float previous = 0f;
 
-            float routeGain = earpiece ? 0.98f : 0.94f;
-            if (cfg.profile != Profile.CORTEX_LOCK_EXTREME) routeGain -= 0.05f * (1f - cfg.intensity);
-
+            float routeGain = earpiece ? 0.88f : 0.84f;
             track.play();
-            listener.onStatus("CORTEX LOCK • " + cfg.profile.label + " • " + routeName(route));
+            listener.onStatus("INNER SPEECH • " + cfg.profile.label + " • " + routeName(route));
 
             while (frame < totalFrames && !stopped.get()) {
                 int frames = (int) Math.min(1024, totalFrames - frame);
                 int cursor = 0;
 
                 for (int i = 0; i < frames; i++) {
-                    float raw = interpolate(pcm.samples, srcPos);
+                    float s = interpolate(pcm.samples, srcPos);
                     srcPos += step;
 
-                    float clean = topLp.process(hp.process(raw));
-                    float bass = bassLp.process(clean);
-                    float bodyBase = bodyLp.process(clean);
-                    float formantBase = formantLp.process(clean);
-                    float lowMid = bodyBase - bass;
-                    float formant = formantBase - bodyBase;
-                    float presence = clean - formantBase;
-
-                    float delayedA = microA.process(clean);
-                    float delayedB = microB.process(clean);
-                    float fastEnv = envFast.process(Math.abs(clean));
-                    float slowEnv = envSlow.process(Math.abs(clean));
-
-                    // Parallel skull/body path. This is deliberately much stronger than v1.2.
-                    float skull = bass * (0.72f + cfg.bone * 0.72f)
-                            + lowMid * (0.28f + cfg.bone * 0.34f);
-
-                    // Very short same-channel delays create a compact cranial coloration without room reverb.
-                    float cranial = clean
-                            + (delayedA - clean) * (0.10f + cfg.depth * 0.16f)
-                            + (delayedB - clean) * (0.04f + cfg.depth * 0.10f);
-
-                    // Speech-gated breath texture. Noise only appears where speech energy exists.
-                    rng = rng * 1664525 + 1013904223;
-                    float white = (((rng >>> 8) & 0x00ffffff) / 8388607.5f) - 1f;
-                    float airy = white - noiseLow.process(white);
-                    float breath = airy * Math.min(1f, fastEnv * 5.8f) * cfg.whisper;
-
-                    float mix;
-                    switch (cfg.profile) {
-                        case SUBVOCAL:
-                            mix = cranial * 0.68f + skull * 0.35f + formant * 0.18f + presence * 0.05f + breath * 0.06f;
-                            break;
-                        case SKULL_VOICE:
-                            mix = cranial * 0.56f + skull * 0.66f + formant * 0.13f + delayedB * 0.08f + breath * 0.035f;
-                            break;
-                        case WHISPER_CORTEX:
-                            mix = cranial * 0.48f + skull * 0.22f + formant * 0.31f + presence * 0.24f + breath * 0.34f;
-                            break;
-                        case INNER_VOICE:
-                            mix = cranial * 0.88f + skull * 0.23f + formant * 0.16f + presence * 0.08f + breath * 0.045f;
-                            break;
-                        case CORTEX_LOCK_EXTREME:
-                            mix = cranial * 0.86f + skull * 0.58f + formant * 0.31f + presence * 0.16f + breath * 0.11f;
-                            break;
-                        default:
-                            mix = cranial * 0.76f + skull * 0.42f + formant * 0.24f + presence * 0.12f + breath * 0.09f;
-                            break;
-                    }
-
-                    // Envelope-dependent upward compression. Quiet phonemes are pulled forward instead of disappearing.
-                    float target = 0.30f + cfg.impact * 0.12f;
-                    float comp = target / (0.045f + slowEnv);
-                    comp = clampRange(comp, 0.92f, 1.55f + cfg.impact * 1.20f);
-                    mix *= (0.82f + comp * (0.18f + cfg.impact * 0.24f));
-
-                    // Presence/transient reinforcement keeps consonants inside the dense low/body mix.
-                    float transientEdge = clean - previous;
-                    previous = clean;
-                    mix += presence * (0.07f + cfg.impact * 0.12f);
-                    mix += transientEdge * (0.018f + cfg.impact * 0.025f);
-                    mix += bass * cfg.depth * 0.13f;
-
-                    double drive = 2.45 + cfg.intensity * 2.35 + cfg.impact * 1.55;
-                    if (cfg.profile == Profile.CORTEX_LOCK_EXTREME) drive += 1.15;
-                    float dense = (float) Math.tanh(mix * drive);
-
-                    // Parallel pre-limiter signal adds body while tanh supplies a brick-wall-like soft ceiling.
-                    dense = (float) Math.tanh(dense * (1.18 + cfg.impact * 0.42) + mix * 0.16);
-
+                    // Final compacting stage after resampling. It raises density, not the device volume ceiling.
+                    float compact = (float) Math.tanh(s * (1.05 + cfg.impact * 0.72));
                     float fi = Math.min(1f, (frame + i) / (float) fadeFrames);
                     float fo = Math.min(1f, (totalFrames - 1 - (frame + i)) / (float) fadeFrames);
-                    float sample = hardLimit(dense * routeGain * Math.max(0f, Math.min(fi, fo)), 0.975f);
+                    float sample = hardLimit(compact * routeGain * Math.max(0f, Math.min(fi, fo)), 0.91f);
                     short q = (short) Math.round(sample * 32767.0);
 
                     if (stereo) {
-                        // Exact diotic output minimizes interaural location cues and maximizes the in-head center image.
                         block[cursor++] = q;
                         block[cursor++] = q;
                     } else {
@@ -258,13 +295,13 @@ public final class ThoughtAudio {
                 int offset = 0;
                 while (offset < count && !stopped.get()) {
                     int wrote = track.write(block, offset, count - offset, AudioTrack.WRITE_BLOCKING);
-                    if (wrote < 0) throw new IllegalStateException("Thought AudioTrack write failed: " + wrote);
+                    if (wrote < 0) throw new IllegalStateException("InnerSpeech AudioTrack write failed: " + wrote);
                     offset += wrote;
                 }
                 frame += frames;
             }
 
-            if (!stopped.get()) listener.onStatus("Cortex Lock playback complete.");
+            if (!stopped.get()) listener.onStatus("Inner Speech playback complete.");
         } catch (Throwable t) {
             listener.onStatus("Thought playback error: " + safeMessage(t));
         } finally {
@@ -279,15 +316,74 @@ public final class ThoughtAudio {
         }
     }
 
-    private static double profileTopHz(Profile p) {
+    private static float dryMix(Profile p) {
         switch (p) {
-            case SUBVOCAL: return 3200.0;
-            case SKULL_VOICE: return 3650.0;
-            case WHISPER_CORTEX: return 5600.0;
-            case INNER_VOICE: return 4400.0;
-            case CORTEX_LOCK_EXTREME: return 5200.0;
-            default: return 4800.0;
+            case PURE_INNER_SPEECH: return 0.025f;
+            case WHISPER_CORTEX: return 0.035f;
+            case SUBVOCAL: return 0.075f;
+            case SKULL_VOICE: return 0.13f;
+            case INNER_VOICE: return 0.17f;
+            case CORTEX_LOCK_EXTREME: return 0.10f;
+            default: return 0.11f;
         }
+    }
+
+    private static float vocoderMix(Profile p) {
+        switch (p) {
+            case PURE_INNER_SPEECH: return 1.28f;
+            case WHISPER_CORTEX: return 1.20f;
+            case SUBVOCAL: return 1.02f;
+            case SKULL_VOICE: return 0.62f;
+            case INNER_VOICE: return 0.76f;
+            case CORTEX_LOCK_EXTREME: return 1.02f;
+            default: return 0.91f;
+        }
+    }
+
+    private static float boneMix(Profile p) {
+        switch (p) {
+            case PURE_INNER_SPEECH: return 0.24f;
+            case WHISPER_CORTEX: return 0.10f;
+            case SUBVOCAL: return 0.35f;
+            case SKULL_VOICE: return 0.62f;
+            case INNER_VOICE: return 0.28f;
+            case CORTEX_LOCK_EXTREME: return 0.46f;
+            default: return 0.34f;
+        }
+    }
+
+    private static float airMix(Profile p) {
+        switch (p) {
+            case PURE_INNER_SPEECH: return 0.34f;
+            case WHISPER_CORTEX: return 0.52f;
+            case SUBVOCAL: return 0.18f;
+            case SKULL_VOICE: return 0.08f;
+            case INNER_VOICE: return 0.11f;
+            case CORTEX_LOCK_EXTREME: return 0.18f;
+            default: return 0.16f;
+        }
+    }
+
+    private static float bandWeight(int band, int count) {
+        float t = count <= 1 ? 0f : band / (float) (count - 1);
+        // Slightly favor the speech-intelligibility middle bands over very low/high bands.
+        return 0.72f + (float) Math.sin(Math.PI * t) * 0.58f;
+    }
+
+    private static void normalizeForSpeech(float[] data, float targetPeak) {
+        float peak = 0f;
+        double sum2 = 0.0;
+        for (float v : data) {
+            peak = Math.max(peak, Math.abs(v));
+            sum2 += v * (double) v;
+        }
+        if (peak < 1e-6f) return;
+        double rms = Math.sqrt(sum2 / Math.max(1, data.length));
+        float peakGain = targetPeak / peak;
+        float rmsGain = rms > 1e-5 ? (float) (0.23 / rms) : peakGain;
+        float gain = Math.min(peakGain, Math.min(2.2f, rmsGain));
+        if (gain < 0.45f) gain = 0.45f;
+        for (int i = 0; i < data.length; i++) data[i] = hardLimit(data[i] * gain, 0.90f);
     }
 
     private AudioDeviceInfo choosePrivateRoute(AudioManager manager) {
@@ -363,22 +459,38 @@ public final class ThoughtAudio {
         return Math.max(lo, Math.min(hi, v));
     }
 
-    private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
+    private static float clamp01(float v) {
+        return Math.max(0f, Math.min(1f, v));
+    }
+
     private static String safeMessage(Throwable t) {
         String m = t.getMessage();
         return m == null || m.trim().isEmpty() ? t.getClass().getSimpleName() : m;
     }
 
-    private static final class DelayLine {
-        private final float[] data;
-        private int pos;
-        DelayLine(int samples) { data = new float[Math.max(2, samples)]; }
+    private static final class Biquad {
+        private final double b0, b1, b2, a1, a2;
+        private double z1, z2;
+
+        private Biquad(double b0, double b1, double b2, double a1, double a2) {
+            this.b0 = b0; this.b1 = b1; this.b2 = b2; this.a1 = a1; this.a2 = a2;
+        }
+
+        static Biquad bandPass(int rate, double hz, double q) {
+            double w0 = 2.0 * Math.PI * Math.max(40.0, Math.min(hz, rate * 0.45)) / rate;
+            double cos = Math.cos(w0);
+            double sin = Math.sin(w0);
+            double alpha = sin / (2.0 * Math.max(0.25, q));
+            double a0 = 1.0 + alpha;
+            return new Biquad(alpha / a0, 0.0, -alpha / a0,
+                    (-2.0 * cos) / a0, (1.0 - alpha) / a0);
+        }
+
         float process(float x) {
-            float y = data[pos];
-            data[pos] = x;
-            pos++;
-            if (pos >= data.length) pos = 0;
-            return y;
+            double y = b0 * x + z1;
+            z1 = b1 * x - a1 * y + z2;
+            z2 = b2 * x - a2 * y;
+            return (float) y;
         }
     }
 
