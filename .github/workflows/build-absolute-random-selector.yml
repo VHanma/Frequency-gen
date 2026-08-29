@@ -1,8 +1,8 @@
-name: Build Absolute Random Tarot Clone APK
+name: Build Absolute Random Tarot Rival 3 APK
 
 on:
   push:
-    branches: [random-selector-tarot-clone]
+    branches: [random-tarot-rival3-entropy]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -16,10 +16,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Check out tarot clone branch
+      - name: Check out Rival 3 entropy branch
         uses: actions/checkout@v4
         with:
-          ref: random-selector-tarot-clone
+          ref: random-tarot-rival3-entropy
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -50,17 +50,17 @@ jobs:
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
           IN="AbsoluteRandomSelector/app/build/outputs/apk/release/app-release-unsigned.apk"
-          "$BT/zipalign" -f -p 4 "$IN" AbsoluteRandomTarot-aligned.apk
-          keytool -genkeypair -noprompt -keystore absolute-random-tarot.jks -storepass absolutetarot -keypass absolutetarot -alias absolutetarot -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Absolute Random Tarot, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks absolute-random-tarot.jks --ks-key-alias absolutetarot --ks-pass pass:absolutetarot --key-pass pass:absolutetarot --out AbsoluteRandomTarot-v1.0.apk AbsoluteRandomTarot-aligned.apk
-          "$BT/apksigner" verify --verbose AbsoluteRandomTarot-v1.0.apk
-          sha256sum AbsoluteRandomTarot-v1.0.apk > AbsoluteRandomTarot-v1.0.sha256
+          "$BT/zipalign" -f -p 4 "$IN" AbsoluteRandomTarotR3-aligned.apk
+          keytool -genkeypair -noprompt -keystore absolute-random-tarot-r3.jks -storepass absoluter3 -keypass absoluter3 -alias absoluter3 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Absolute Random Tarot Rival 3, O=VHanma, C=US"
+          "$BT/apksigner" sign --ks absolute-random-tarot-r3.jks --ks-key-alias absoluter3 --ks-pass pass:absoluter3 --key-pass pass:absoluter3 --out AbsoluteRandomTarot-Rival3-v1.1.apk AbsoluteRandomTarotR3-aligned.apk
+          "$BT/apksigner" verify --verbose AbsoluteRandomTarot-Rival3-v1.1.apk
+          sha256sum AbsoluteRandomTarot-Rival3-v1.1.apk > AbsoluteRandomTarot-Rival3-v1.1.sha256
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: AbsoluteRandomTarot-installable-apk
+          name: AbsoluteRandomTarot-Rival3-installable-apk
           path: |
-            AbsoluteRandomTarot-v1.0.apk
-            AbsoluteRandomTarot-v1.0.sha256
+            AbsoluteRandomTarot-Rival3-v1.1.apk
+            AbsoluteRandomTarot-Rival3-v1.1.sha256
           retention-days: 14
