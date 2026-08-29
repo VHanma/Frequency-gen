@@ -1,0 +1,121 @@
+name: Build InfoBeam APK
+
+on:
+  push:
+    branches:
+      - info-beam-v1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Build release APK
+        id: gradle_build
+        working-directory: InfoBeam
+        shell: bash
+        run: |
+          set +e
+          gradle :app:assembleRelease --stacktrace > ../infobeam-build.log 2>&1
+          status=$?
+          grep -E "^(.*error:|FAILURE:|\\* What went wrong:|> Task .* FAILED)" ../infobeam-build.log | tail -n 300 > ../infobeam-errors.txt || true
+          exit $status
+
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfoBeam-build-diagnostics
+          path: |
+            infobeam-build.log
+            infobeam-errors.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Sign installable APK
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          UNSIGNED="InfoBeam/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="InfoBeam-aligned.apk"
+          FINAL="InfoBeam.apk"
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+
+          keytool -genkeypair -noprompt \
+            -keystore infobeam-install-key.jks \
+            -storepass infobeam \
+            -keypass infobeam \
+            -alias infobeam \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=InfoBeam Personal Build, OU=Android, O=VHanma, C=US"
+
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks infobeam-install-key.jks \
+            --ks-key-alias infobeam \
+            --ks-pass pass:infobeam \
+            --key-pass pass:infobeam \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$FINAL"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$FINAL"
+          unzip -t "$FINAL" >/dev/null
+          sha256sum "$FINAL" | tee InfoBeam.sha256
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfoBeam-installable-apk
+          path: |
+            InfoBeam.apk
+            InfoBeam.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish downloadable GitHub release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="infobeam-v1-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" InfoBeam.apk InfoBeam.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "InfoBeam Ω v1 • build ${GITHUB_RUN_NUMBER}" \
+            --notes "Installable InfoBeam Ω Android APK. Package: com.vaan.infobeam. Includes ultrasonic FSK text TX/RX with CRC, private earpiece playback, phone carrier experiment, hardware scan, and external parametric voice-beam output."
