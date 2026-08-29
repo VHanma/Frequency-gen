@@ -10,13 +10,13 @@
 
     <application
         android:allowBackup="true"
-        android:label="InfoBeam Ω"
+        android:label="InfoBeam Ω Thought"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ThoughtActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
