@@ -10,14 +10,22 @@ import android.os.Build;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** Head-locked private speech renderer. No room/reverb cues are added. */
+/**
+ * Head-locked private speech renderer.
+ * v1.3 uses parallel low/body/formant bands, dual micro-delay cranial coloration,
+ * envelope-driven breath texture, and dense soft-limited compression. The final
+ * output remains hard limited below full scale and Android's normal volume control
+ * still governs acoustic level.
+ */
 public final class ThoughtAudio {
     public enum Profile {
         INNER_VOICE("Inner Voice"),
         SUBVOCAL("Subvocal"),
         SKULL_VOICE("Skull Voice"),
         WHISPER_CORTEX("Whisper Cortex"),
-        HYBRID("Hybrid Neural");
+        HYBRID("Hybrid Neural"),
+        CORTEX_LOCK_EXTREME("Cortex Lock EXTREME");
+
         public final String label;
         Profile(String label) { this.label = label; }
         @Override public String toString() { return label; }
@@ -29,15 +37,23 @@ public final class ThoughtAudio {
         public final float bone;
         public final float whisper;
         public final float depth;
+        public final float impact;
+
         public Settings(Profile profile, float intensity, float bone, float whisper, float depth) {
+            this(profile, intensity, bone, whisper, depth, 0.72f);
+        }
+
+        public Settings(Profile profile, float intensity, float bone, float whisper, float depth, float impact) {
             this.profile = profile == null ? Profile.HYBRID : profile;
             this.intensity = clamp01(intensity);
             this.bone = clamp01(bone);
             this.whisper = clamp01(whisper);
             this.depth = clamp01(depth);
+            this.impact = clamp01(impact);
         }
+
         public static Settings defaultHybrid(float intensity) {
-            return new Settings(Profile.HYBRID, intensity, 0.62f, 0.24f, 0.78f);
+            return new Settings(Profile.HYBRID, intensity, 0.68f, 0.20f, 0.84f, 0.78f);
         }
     }
 
@@ -71,7 +87,7 @@ public final class ThoughtAudio {
     public void play(Context context, PcmWav.Data pcm, Settings settings, Listener listener) {
         stop();
         stopped.set(false);
-        new Thread(() -> render(context.getApplicationContext(), pcm, settings, listener), "InfoBeam-NeuroThought").start();
+        new Thread(() -> render(context.getApplicationContext(), pcm, settings, listener), "InfoBeam-CortexLock").start();
     }
 
     private void render(Context context, PcmWav.Data pcm, Settings cfg, Listener listener) {
@@ -88,7 +104,7 @@ public final class ThoughtAudio {
             int channelMask = stereo ? AudioFormat.CHANNEL_OUT_STEREO : AudioFormat.CHANNEL_OUT_MONO;
             int channels = stereo ? 2 : 1;
             int min = AudioTrack.getMinBufferSize(outRate, channelMask, AudioFormat.ENCODING_PCM_16BIT);
-            int buffer = Math.max(min > 0 ? min : 0, 24576);
+            int buffer = Math.max(min > 0 ? min : 0, 24_576);
 
             if (earpiece) {
                 communicationRoute = true;
@@ -100,11 +116,13 @@ public final class ThoughtAudio {
                 }
             }
 
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(earpiece ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+
             track = new AudioTrack.Builder()
-                    .setAudioAttributes(new AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                            .build())
+                    .setAudioAttributes(attrs)
                     .setAudioFormat(new AudioFormat.Builder()
                             .setSampleRate(outRate)
                             .setChannelMask(channelMask)
@@ -115,81 +133,120 @@ public final class ThoughtAudio {
                     .build();
             activeTrack = track;
             try { track.setPreferredDevice(route); } catch (Throwable ignored) {}
+            try { track.setVolume(1.0f); } catch (Throwable ignored) {}
 
             double step = pcm.sampleRate / (double) outRate;
             long totalFrames = Math.max(1L, (long) Math.ceil(pcm.samples.length / step));
             short[] block = new short[1024 * channels];
-            int fadeFrames = Math.max(1, (int) (outRate * 0.018));
+            int fadeFrames = Math.max(1, (int) (outRate * 0.012));
 
-            OnePoleHighPass hp = new OnePoleHighPass(outRate, 85.0);
-            OnePoleLowPass lp = new OnePoleLowPass(outRate, profileTopHz(cfg.profile));
-            OnePoleLowPass boneLp = new OnePoleLowPass(outRate, 720.0);
-            OnePoleLowPass lowMidLp = new OnePoleLowPass(outRate, 1450.0);
-            OnePoleLowPass presenceLp = new OnePoleLowPass(outRate, 3150.0);
-            OnePoleLowPass envLp = new OnePoleLowPass(outRate, 22.0);
-            DelayLine micro = new DelayLine(Math.max(4, (int) (outRate * 0.00042)));
+            OnePoleHighPass hp = new OnePoleHighPass(outRate, 58.0);
+            OnePoleLowPass topLp = new OnePoleLowPass(outRate, profileTopHz(cfg.profile));
+            OnePoleLowPass bassLp = new OnePoleLowPass(outRate, 520.0);
+            OnePoleLowPass bodyLp = new OnePoleLowPass(outRate, 1120.0);
+            OnePoleLowPass formantLp = new OnePoleLowPass(outRate, 2450.0);
+            OnePoleLowPass envFast = new OnePoleLowPass(outRate, 30.0);
+            OnePoleLowPass envSlow = new OnePoleLowPass(outRate, 7.0);
+            OnePoleLowPass noiseLow = new OnePoleLowPass(outRate, 1150.0);
+            DelayLine microA = new DelayLine(Math.max(3, (int) (outRate * 0.00018)));
+            DelayLine microB = new DelayLine(Math.max(5, (int) (outRate * 0.00062)));
 
             double srcPos = 0.0;
             long frame = 0;
-            int rng = 0x5EED1234;
-            float peakGain = earpiece ? 0.86f : (0.54f + cfg.intensity * 0.26f);
+            int rng = 0x6F2A4B19;
+            float previous = 0f;
+
+            float routeGain = earpiece ? 0.98f : 0.94f;
+            if (cfg.profile != Profile.CORTEX_LOCK_EXTREME) routeGain -= 0.05f * (1f - cfg.intensity);
 
             track.play();
-            listener.onStatus("NEUROTHOUGHT • " + cfg.profile.label + " • " + routeName(route));
+            listener.onStatus("CORTEX LOCK • " + cfg.profile.label + " • " + routeName(route));
 
             while (frame < totalFrames && !stopped.get()) {
                 int frames = (int) Math.min(1024, totalFrames - frame);
                 int cursor = 0;
+
                 for (int i = 0; i < frames; i++) {
                     float raw = interpolate(pcm.samples, srcPos);
                     srcPos += step;
 
-                    float clean = lp.process(hp.process(raw));
-                    float low = boneLp.process(clean);
-                    float lowMid = lowMidLp.process(clean);
-                    float upper = presenceLp.process(clean) - lowMid;
-                    float delayed = micro.process(clean);
-                    float env = envLp.process(Math.abs(clean));
+                    float clean = topLp.process(hp.process(raw));
+                    float bass = bassLp.process(clean);
+                    float bodyBase = bodyLp.process(clean);
+                    float formantBase = formantLp.process(clean);
+                    float lowMid = bodyBase - bass;
+                    float formant = formantBase - bodyBase;
+                    float presence = clean - formantBase;
 
+                    float delayedA = microA.process(clean);
+                    float delayedB = microB.process(clean);
+                    float fastEnv = envFast.process(Math.abs(clean));
+                    float slowEnv = envSlow.process(Math.abs(clean));
+
+                    // Parallel skull/body path. This is deliberately much stronger than v1.2.
+                    float skull = bass * (0.72f + cfg.bone * 0.72f)
+                            + lowMid * (0.28f + cfg.bone * 0.34f);
+
+                    // Very short same-channel delays create a compact cranial coloration without room reverb.
+                    float cranial = clean
+                            + (delayedA - clean) * (0.10f + cfg.depth * 0.16f)
+                            + (delayedB - clean) * (0.04f + cfg.depth * 0.10f);
+
+                    // Speech-gated breath texture. Noise only appears where speech energy exists.
                     rng = rng * 1664525 + 1013904223;
-                    float noise = (((rng >>> 8) & 0x00ffffff) / 8388607.5f) - 1f;
-                    float breath = noise * Math.min(1f, env * 5.2f);
+                    float white = (((rng >>> 8) & 0x00ffffff) / 8388607.5f) - 1f;
+                    float airy = white - noiseLow.process(white);
+                    float breath = airy * Math.min(1f, fastEnv * 5.8f) * cfg.whisper;
 
-                    float body;
+                    float mix;
                     switch (cfg.profile) {
                         case SUBVOCAL:
-                            body = clean * 0.54f + low * (0.30f + cfg.bone * 0.26f) + upper * 0.10f;
-                            breath *= 0.16f;
+                            mix = cranial * 0.68f + skull * 0.35f + formant * 0.18f + presence * 0.05f + breath * 0.06f;
                             break;
                         case SKULL_VOICE:
-                            body = clean * 0.43f + low * (0.42f + cfg.bone * 0.34f) + delayed * 0.10f;
-                            breath *= 0.10f;
+                            mix = cranial * 0.56f + skull * 0.66f + formant * 0.13f + delayedB * 0.08f + breath * 0.035f;
                             break;
                         case WHISPER_CORTEX:
-                            body = clean * 0.31f + upper * 0.26f + low * 0.13f;
-                            breath *= (0.44f + cfg.whisper * 0.46f);
+                            mix = cranial * 0.48f + skull * 0.22f + formant * 0.31f + presence * 0.24f + breath * 0.34f;
                             break;
                         case INNER_VOICE:
-                            body = clean * 0.70f + low * (0.12f + cfg.bone * 0.16f) + upper * 0.07f;
-                            breath *= 0.10f + cfg.whisper * 0.14f;
+                            mix = cranial * 0.88f + skull * 0.23f + formant * 0.16f + presence * 0.08f + breath * 0.045f;
+                            break;
+                        case CORTEX_LOCK_EXTREME:
+                            mix = cranial * 0.86f + skull * 0.58f + formant * 0.31f + presence * 0.16f + breath * 0.11f;
                             break;
                         default:
-                            body = clean * 0.54f + low * (0.22f + cfg.bone * 0.27f) + upper * 0.12f + delayed * 0.055f;
-                            breath *= 0.16f + cfg.whisper * 0.34f;
+                            mix = cranial * 0.76f + skull * 0.42f + formant * 0.24f + presence * 0.12f + breath * 0.09f;
                             break;
                     }
 
-                    float neural = (float) Math.tanh(body * (2.0 + cfg.intensity * 1.45));
-                    neural += breath * cfg.whisper * 0.16f;
-                    neural += low * cfg.depth * 0.08f;
+                    // Envelope-dependent upward compression. Quiet phonemes are pulled forward instead of disappearing.
+                    float target = 0.30f + cfg.impact * 0.12f;
+                    float comp = target / (0.045f + slowEnv);
+                    comp = clampRange(comp, 0.92f, 1.55f + cfg.impact * 1.20f);
+                    mix *= (0.82f + comp * (0.18f + cfg.impact * 0.24f));
+
+                    // Presence/transient reinforcement keeps consonants inside the dense low/body mix.
+                    float transientEdge = clean - previous;
+                    previous = clean;
+                    mix += presence * (0.07f + cfg.impact * 0.12f);
+                    mix += transientEdge * (0.018f + cfg.impact * 0.025f);
+                    mix += bass * cfg.depth * 0.13f;
+
+                    double drive = 2.45 + cfg.intensity * 2.35 + cfg.impact * 1.55;
+                    if (cfg.profile == Profile.CORTEX_LOCK_EXTREME) drive += 1.15;
+                    float dense = (float) Math.tanh(mix * drive);
+
+                    // Parallel pre-limiter signal adds body while tanh supplies a brick-wall-like soft ceiling.
+                    dense = (float) Math.tanh(dense * (1.18 + cfg.impact * 0.42) + mix * 0.16);
 
                     float fi = Math.min(1f, (frame + i) / (float) fadeFrames);
                     float fo = Math.min(1f, (totalFrames - 1 - (frame + i)) / (float) fadeFrames);
-                    float s = clamp(neural * peakGain * Math.max(0f, Math.min(fi, fo)));
-                    short q = (short) Math.round(s * 32767.0);
+                    float sample = hardLimit(dense * routeGain * Math.max(0f, Math.min(fi, fo)), 0.975f);
+                    short q = (short) Math.round(sample * 32767.0);
 
                     if (stereo) {
-                        // Diotic output deliberately removes interaural location cues and locks the image to the head center.
+                        // Exact diotic output minimizes interaural location cues and maximizes the in-head center image.
                         block[cursor++] = q;
                         block[cursor++] = q;
                     } else {
@@ -206,7 +263,8 @@ public final class ThoughtAudio {
                 }
                 frame += frames;
             }
-            if (!stopped.get()) listener.onStatus("Thought playback complete.");
+
+            if (!stopped.get()) listener.onStatus("Cortex Lock playback complete.");
         } catch (Throwable t) {
             listener.onStatus("Thought playback error: " + safeMessage(t));
         } finally {
@@ -223,11 +281,12 @@ public final class ThoughtAudio {
 
     private static double profileTopHz(Profile p) {
         switch (p) {
-            case SUBVOCAL: return 2850.0;
-            case SKULL_VOICE: return 3200.0;
-            case WHISPER_CORTEX: return 4100.0;
-            case INNER_VOICE: return 3500.0;
-            default: return 3800.0;
+            case SUBVOCAL: return 3200.0;
+            case SKULL_VOICE: return 3650.0;
+            case WHISPER_CORTEX: return 5600.0;
+            case INNER_VOICE: return 4400.0;
+            case CORTEX_LOCK_EXTREME: return 5200.0;
+            default: return 4800.0;
         }
     }
 
@@ -255,8 +314,12 @@ public final class ThoughtAudio {
     private int chooseRate(AudioDeviceInfo route) {
         int[] rates = route.getSampleRates();
         int best = 0;
-        if (rates != null) for (int r : rates) if (r >= 16000 && r <= 96000 && (best == 0 || Math.abs(r - 48000) < Math.abs(best - 48000))) best = r;
-        return best > 0 ? best : 48000;
+        if (rates != null) {
+            for (int r : rates) {
+                if (r >= 16_000 && r <= 96_000 && (best == 0 || Math.abs(r - 48_000) < Math.abs(best - 48_000))) best = r;
+            }
+        }
+        return best > 0 ? best : 48_000;
     }
 
     private boolean isHeadphoneLike(int type) {
@@ -292,25 +355,59 @@ public final class ThoughtAudio {
         return (float) (data[i] + (data[i + 1] - data[i]) * f);
     }
 
-    private static float clamp(float v) { return Math.max(-0.98f, Math.min(0.98f, v)); }
+    private static float hardLimit(float v, float ceiling) {
+        return Math.max(-ceiling, Math.min(ceiling, v));
+    }
+
+    private static float clampRange(float v, float lo, float hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
     private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
-    private static String safeMessage(Throwable t) { String m = t.getMessage(); return m == null || m.trim().isEmpty() ? t.getClass().getSimpleName() : m; }
+    private static String safeMessage(Throwable t) {
+        String m = t.getMessage();
+        return m == null || m.trim().isEmpty() ? t.getClass().getSimpleName() : m;
+    }
 
     private static final class DelayLine {
-        private final float[] data; private int pos;
+        private final float[] data;
+        private int pos;
         DelayLine(int samples) { data = new float[Math.max(2, samples)]; }
-        float process(float x) { float y = data[pos]; data[pos] = x; pos++; if (pos >= data.length) pos = 0; return y; }
+        float process(float x) {
+            float y = data[pos];
+            data[pos] = x;
+            pos++;
+            if (pos >= data.length) pos = 0;
+            return y;
+        }
     }
 
     private static final class OnePoleLowPass {
-        private final double a; private float y;
-        OnePoleLowPass(int rate, double hz) { double dt = 1.0 / rate, rc = 1.0 / (2.0 * Math.PI * hz); a = dt / (rc + dt); }
-        float process(float x) { y += (float) (a * (x - y)); return y; }
+        private final double a;
+        private float y;
+        OnePoleLowPass(int rate, double hz) {
+            double dt = 1.0 / rate;
+            double rc = 1.0 / (2.0 * Math.PI * hz);
+            a = dt / (rc + dt);
+        }
+        float process(float x) {
+            y += (float) (a * (x - y));
+            return y;
+        }
     }
 
     private static final class OnePoleHighPass {
-        private final double a; private float y, lastX;
-        OnePoleHighPass(int rate, double hz) { double dt = 1.0 / rate, rc = 1.0 / (2.0 * Math.PI * hz); a = rc / (rc + dt); }
-        float process(float x) { y = (float) (a * (y + x - lastX)); lastX = x; return y; }
+        private final double a;
+        private float y, lastX;
+        OnePoleHighPass(int rate, double hz) {
+            double dt = 1.0 / rate;
+            double rc = 1.0 / (2.0 * Math.PI * hz);
+            a = rc / (rc + dt);
+        }
+        float process(float x) {
+            y = (float) (a * (y + x - lastX));
+            lastX = x;
+            return y;
+        }
     }
 }
