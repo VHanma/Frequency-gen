@@ -1,0 +1,3 @@
+Frequency Remapper v1.2.0 stable live/save rebuild trigger.
+Crash-safe live preview + durable verified public export.
+Build request: stable-120-final
