@@ -61,6 +61,10 @@ jobs:
         shell: bash
         run: python3 FrequencyRemapper/apply_combat_body_map_patch.py
 
+      - name: Apply Full Combat Atlas source patch
+        shell: bash
+        run: python3 FrequencyRemapper/apply_full_combat_atlas_patch.py
+
       - name: Build release APK
         id: gradle_build
         working-directory: FrequencyRemapper
@@ -76,7 +80,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: FrequencyRemapper-v1.6.2-build-diagnostics
+          name: FrequencyRemapper-v1.7.0-build-diagnostics
           path: |
             frequency-remapper-build.log
             frequency-remapper-errors.txt
@@ -96,17 +100,17 @@ jobs:
             keytool -genkeypair -noprompt -keystore "$KS" -storepass frequencyremapper -keypass frequencyremapper -alias frequencyremapper -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Frequency Remapper, O=VHanma, C=US"
           fi
           "$BT/zipalign" -f -p 4 "$IN" FrequencyRemapper-aligned.apk
-          "$BT/apksigner" sign --ks "$KS" --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.6.2.apk FrequencyRemapper-aligned.apk
-          "$BT/apksigner" verify --verbose --print-certs FrequencyRemapper-v1.6.2.apk
-          sha256sum FrequencyRemapper-v1.6.2.apk > FrequencyRemapper-v1.6.2.sha256
+          "$BT/apksigner" sign --ks "$KS" --ks-key-alias frequencyremapper --ks-pass pass:frequencyremapper --key-pass pass:frequencyremapper --out FrequencyRemapper-v1.7.0.apk FrequencyRemapper-aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs FrequencyRemapper-v1.7.0.apk
+          sha256sum FrequencyRemapper-v1.7.0.apk > FrequencyRemapper-v1.7.0.sha256
 
       - name: Upload installable APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: FrequencyRemapper-v1.6.2-combat-body-map-apk
+          name: FrequencyRemapper-v1.7.0-full-combat-atlas-apk
           path: |
-            FrequencyRemapper-v1.6.2.apk
-            FrequencyRemapper-v1.6.2.sha256
+            FrequencyRemapper-v1.7.0.apk
+            FrequencyRemapper-v1.7.0.sha256
           if-no-files-found: error
           retention-days: 14
