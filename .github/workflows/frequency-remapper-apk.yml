@@ -49,6 +49,10 @@ jobs:
           path: .signing/frequency-remapper.jks
           key: frequency-remapper-signing-v1
 
+      - name: Prepare corrected Vocals Front patch
+        shell: bash
+        run: python3 FrequencyRemapper/prepare_vocal_front_patch.py
+
       - name: Apply Vocals Front source patch
         shell: bash
         run: python3 FrequencyRemapper/apply_vocal_front_patch.py
