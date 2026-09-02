@@ -10,8 +10,8 @@ android {
         applicationId = "com.vaan.infobeam"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.0.0-inner-speech"
+        versionCode = 6
+        versionName = "3.0.0-hypersonic-laser"
     }
 
     buildTypes {
