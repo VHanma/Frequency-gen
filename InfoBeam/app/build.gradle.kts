@@ -10,8 +10,8 @@ android {
         applicationId = "com.vaan.infobeam"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "3.0.0-hypersonic-laser"
+        versionCode = 7
+        versionName = "3.0.1-unified-hypersonic"
     }
 
     buildTypes {
