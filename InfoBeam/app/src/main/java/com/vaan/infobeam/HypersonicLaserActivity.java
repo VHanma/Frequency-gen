@@ -26,9 +26,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
 
 public final class HypersonicLaserActivity extends Activity {
@@ -38,7 +36,7 @@ public final class HypersonicLaserActivity extends Activity {
 
     private enum Pending { NONE, SINGLE_TTS, DUAL_TTS }
 
-    private final HypersonicEngine engine = new HypersonicEngine();
+    private final UnifiedHypersonicEngine engine = new UnifiedHypersonicEngine();
     private AudioManager audioManager;
     private TextToSpeech tts;
     private volatile boolean ttsReady;
@@ -49,7 +47,7 @@ public final class HypersonicLaserActivity extends Activity {
     private LinearLayout singlePanel, dualPanel;
     private Button tabSingle, tabDual;
     private TextView status, routeInfo, chosenAudioLabel;
-    private Spinner singleSource, singleRouting, singleRate, dualRate;
+    private Spinner singleSource, singleRate, dualRate;
     private EditText singleText, singleCarrier, dualText, carrierA, carrierB, elfA, elfB;
     private SeekBar singleMod, singleBeam, singleElf, dualMod, dualBeam, dualElf;
     private TextView singleModLabel, singleBeamLabel, singleElfLabel, dualModLabel, dualBeamLabel, dualElfLabel;
@@ -70,7 +68,7 @@ public final class HypersonicLaserActivity extends Activity {
         scroll.addView(root,new ScrollView.LayoutParams(-1,-2));
 
         root.addView(text("INFOBEAM Ω • HYPERSONIC LASER",24,CYAN,true));
-        TextView sub=text("External high-rate parametric output • sample-synchronous hypersonic + ELF matrix",13,MUTED,false);
+        TextView sub=text("External high-rate parametric output • every carrier + ELF component runs in one synchronized signal",13,MUTED,false);
         sub.setPadding(0,dp(4),0,dp(10)); root.addView(sub);
         status=text("ENGINE STARTING",14,GOLD,true); status.setPadding(dp(12),dp(10),dp(12),dp(10)); status.setBackground(round(Color.rgb(25,34,39),11,GOLD)); root.addView(status,full());
 
@@ -86,7 +84,7 @@ public final class HypersonicLaserActivity extends Activity {
         dualPanel.setVisibility(View.GONE);
         tabSingle.setOnClickListener(v->showTab(true)); tabDual.setOnClickListener(v->showTab(false));
 
-        LinearLayout hw=card(root,"EXTERNAL OUTPUT ROUTE","The app generates line-level waveforms. Your DAC, amplifier, parametric array, ultrasonic transducers, ELF actuator, and their limits determine physical output.");
+        LinearLayout hw=card(root,"EXTERNAL OUTPUT ROUTE","The app outputs one unified high-rate waveform mirrored to both channels. Your external DAC, amplifier, parametric array, ultrasonic transducers, and ELF-capable stage determine the physical output.");
         routeInfo=text("Scanning…",12,MUTED,false); hw.addView(routeInfo);
         Button scan=button("RESCAN HARDWARE",TEXT,Color.rgb(22,34,40)); scan.setOnClickListener(v->scanRoute()); hw.addView(scan,top(7));
 
@@ -98,7 +96,7 @@ public final class HypersonicLaserActivity extends Activity {
     private LinearLayout buildSingle() {
         LinearLayout p=new LinearLayout(this); p.setOrientation(LinearLayout.VERTICAL); p.setPadding(dp(14),dp(14),dp(14),dp(14)); p.setBackground(round(CARD,14,Color.rgb(37,61,67)));
         p.addView(text("TAB 1 • HYPERSONIC + EXACT 7.83 Hz",17,CYAN,true));
-        TextView note=text("Choose TTS or an audio file. One sample clock generates the hypersonic beam and 7.83 Hz at the exact same time. Split routing is recommended when the ultrasonic array and ELF hardware are separate.",12,MUTED,false); note.setPadding(0,dp(4),0,dp(8)); p.addView(note);
+        TextView note=text("Choose TTS or an audio file. The voice modulation, chosen hypersonic carrier, and exact 7.830 Hz component are summed into one waveform from one sample clock and run at the exact same time.",12,MUTED,false); note.setPadding(0,dp(4),0,dp(8)); p.addView(note);
 
         singleSource=spinner(new String[]{"Text → TTS","Chosen audio file"}); p.addView(singleSource);
         singleText=field("Text to beam",4); p.addView(singleText,top(7));
@@ -107,9 +105,8 @@ public final class HypersonicLaserActivity extends Activity {
 
         p.addView(text("Hypersonic carrier (Hz)",12,TEXT,true),top(9));
         singleCarrier=numberField("40000",false); p.addView(singleCarrier);
-        TextView elfFixed=text("ELF: 7.830 Hz • fixed exact target",13,GOLD,true); elfFixed.setPadding(0,dp(8),0,0); p.addView(elfFixed);
+        TextView elfFixed=text("ELF: 7.830 Hz • fixed exact target • mixed into same signal",13,GOLD,true); elfFixed.setPadding(0,dp(8),0,0); p.addView(elfFixed);
 
-        singleRouting=spinner(new String[]{"Split: Left beam / Right 7.83 Hz","Combined: beam + 7.83 on both"}); p.addView(singleRouting,top(7));
         singleRate=spinner(new String[]{"192000 Hz preferred","96000 Hz preferred"}); p.addView(singleRate,top(7));
 
         singleModLabel=text("Voice modulation depth 88%",12,TEXT,true); p.addView(singleModLabel,top(8));
@@ -119,30 +116,30 @@ public final class HypersonicLaserActivity extends Activity {
         singleElfLabel=text("ELF line level 16%",12,TEXT,true); p.addView(singleElfLabel);
         singleElf=slider(16,GOLD,v->singleElfLabel.setText("ELF line level "+v+"%")); p.addView(singleElf);
 
-        Button play=button("FIRE SYNCHRONIZED SIGNAL",CYAN,Color.rgb(3,39,45)); play.setOnClickListener(v->startSingle()); p.addView(play,top(9));
+        Button play=button("FIRE ALL TOGETHER",CYAN,Color.rgb(3,39,45)); play.setOnClickListener(v->startSingle()); p.addView(play,top(9));
         return p;
     }
 
     private LinearLayout buildDual() {
         LinearLayout p=new LinearLayout(this); p.setOrientation(LinearLayout.VERTICAL); p.setPadding(dp(14),dp(14),dp(14),dp(14)); p.setBackground(round(CARD,14,Color.rgb(37,61,67)));
-        p.addView(text("TAB 2 • DUAL HYPERSONIC + DUAL ELF",17,CYAN,true));
-        TextView note=text("One TTS source modulates two chosen hypersonic carriers while two chosen ELF components run simultaneously. Left = Carrier A + ELF A. Right = Carrier B + ELF B.",12,MUTED,false); note.setPadding(0,dp(4),0,dp(8)); p.addView(note);
-        dualText=field("Text for dual TTS beam",4); p.addView(dualText);
+        p.addView(text("TAB 2 • 2 HYPERSONIC + 2 ELF + TTS",17,CYAN,true));
+        TextView note=text("The TTS source modulates both chosen hypersonic carriers while both chosen ELF frequencies run simultaneously. TTS + Carrier A + Carrier B + ELF A + ELF B are all summed into the same waveform, not split between channels.",12,MUTED,false); note.setPadding(0,dp(4),0,dp(8)); p.addView(note);
+        dualText=field("Text for dual hypersonic matrix",4); p.addView(dualText);
 
-        p.addView(text("Carrier A (Hz)",12,TEXT,true),top(8)); carrierA=numberField("40000",false); p.addView(carrierA);
+        p.addView(text("Hypersonic A (Hz)",12,TEXT,true),top(8)); carrierA=numberField("40000",false); p.addView(carrierA);
         p.addView(text("ELF A (Hz)",12,TEXT,true),top(5)); elfA=numberField("7.83",true); p.addView(elfA);
-        p.addView(text("Carrier B (Hz)",12,TEXT,true),top(8)); carrierB=numberField("42000",false); p.addView(carrierB);
+        p.addView(text("Hypersonic B (Hz)",12,TEXT,true),top(8)); carrierB=numberField("42000",false); p.addView(carrierB);
         p.addView(text("ELF B (Hz)",12,TEXT,true),top(5)); elfB=numberField("10.00",true); p.addView(elfB);
         dualRate=spinner(new String[]{"192000 Hz preferred","96000 Hz preferred"}); p.addView(dualRate,top(7));
 
-        dualModLabel=text("Voice modulation depth 88%",12,TEXT,true); p.addView(dualModLabel,top(8));
-        dualMod=slider(88,CYAN,v->dualModLabel.setText("Voice modulation depth "+v+"%")); p.addView(dualMod);
-        dualBeamLabel=text("Carrier line level 30%",12,TEXT,true); p.addView(dualBeamLabel);
-        dualBeam=slider(30,GOLD,v->dualBeamLabel.setText("Carrier line level "+v+"%")); p.addView(dualBeam);
-        dualElfLabel=text("ELF line level 12%",12,TEXT,true); p.addView(dualElfLabel);
-        dualElf=slider(12,GOLD,v->dualElfLabel.setText("ELF line level "+v+"%")); p.addView(dualElf);
+        dualModLabel=text("TTS modulation depth 88%",12,TEXT,true); p.addView(dualModLabel,top(8));
+        dualMod=slider(88,CYAN,v->dualModLabel.setText("TTS modulation depth "+v+"%")); p.addView(dualMod);
+        dualBeamLabel=text("Each hypersonic carrier level 30%",12,TEXT,true); p.addView(dualBeamLabel);
+        dualBeam=slider(30,GOLD,v->dualBeamLabel.setText("Each hypersonic carrier level "+v+"%")); p.addView(dualBeam);
+        dualElfLabel=text("Each ELF level 12%",12,TEXT,true); p.addView(dualElfLabel);
+        dualElf=slider(12,GOLD,v->dualElfLabel.setText("Each ELF level "+v+"%")); p.addView(dualElf);
 
-        Button play=button("FIRE DUAL MATRIX",CYAN,Color.rgb(3,39,45)); play.setOnClickListener(v->startDual()); p.addView(play,top(9));
+        Button play=button("FIRE ALL 5 TOGETHER",CYAN,Color.rgb(3,39,45)); play.setOnClickListener(v->startDual()); p.addView(play,top(9));
         return p;
     }
 
@@ -174,27 +171,27 @@ public final class HypersonicLaserActivity extends Activity {
 
     private void playSinglePcm(PcmWav.Data pcm) {
         try {
-            double carrier=parse(singleCarrier,40000); int rate=rate(singleRate); boolean split=singleRouting.getSelectedItemPosition()==0;
-            HypersonicEngine.SingleConfig cfg=new HypersonicEngine.SingleConfig(carrier,7.83,pct(singleMod),pct(singleBeam),pct(singleElf),split,rate,findExternal());
+            double carrier=parse(singleCarrier,40000); int rate=rate(singleRate);
+            UnifiedHypersonicEngine.SingleConfig cfg=new UnifiedHypersonicEngine.SingleConfig(carrier,7.83,pct(singleMod),pct(singleBeam),pct(singleElf),rate,findExternal());
             engine.playSingle(pcm,cfg,listener);
         } catch(Throwable t){setStatus("Config error: "+safe(t),RED);}
     }
 
     private void playDualPcm(PcmWav.Data pcm) {
         try {
-            HypersonicEngine.DualConfig cfg=new HypersonicEngine.DualConfig(parse(carrierA,40000),parse(carrierB,42000),parse(elfA,7.83),parse(elfB,10.0),pct(dualMod),pct(dualBeam),pct(dualElf),rate(dualRate),findExternal());
+            UnifiedHypersonicEngine.DualConfig cfg=new UnifiedHypersonicEngine.DualConfig(parse(carrierA,40000),parse(carrierB,42000),parse(elfA,7.83),parse(elfB,10.0),pct(dualMod),pct(dualBeam),pct(dualElf),rate(dualRate),findExternal());
             engine.playDual(pcm,cfg,listener);
         } catch(Throwable t){setStatus("Config error: "+safe(t),RED);}
     }
 
-    private final HypersonicEngine.Listener listener=new HypersonicEngine.Listener(){
+    private final UnifiedHypersonicEngine.Listener listener=new UnifiedHypersonicEngine.Listener(){
         @Override public void onStatus(String s){runOnUiThread(()->setStatus(s,s.toLowerCase(Locale.US).contains("error")?RED:CYAN));}
         @Override public void onStopped(){}
     };
 
     private void initTts() {
         tts=new TextToSpeech(getApplicationContext(),r->{
-            if(r==TextToSpeech.SUCCESS){ttsReady=true; int lang=tts.setLanguage(Locale.US); if(lang==TextToSpeech.LANG_MISSING_DATA||lang==TextToSpeech.LANG_NOT_SUPPORTED)tts.setLanguage(Locale.getDefault()); tts.setSpeechRate(0.98f); tts.setPitch(0.92f); runOnUiThread(()->setStatus("READY • external route preferred",CYAN));}
+            if(r==TextToSpeech.SUCCESS){ttsReady=true; int lang=tts.setLanguage(Locale.US); if(lang==TextToSpeech.LANG_MISSING_DATA||lang==TextToSpeech.LANG_NOT_SUPPORTED)tts.setLanguage(Locale.getDefault()); tts.setSpeechRate(0.98f); tts.setPitch(0.92f); runOnUiThread(()->setStatus("READY • all requested frequencies will run together",CYAN));}
             else runOnUiThread(()->setStatus("TTS unavailable",RED));
         });
         tts.setOnUtteranceProgressListener(new UtteranceProgressListener(){
@@ -247,6 +244,7 @@ public final class HypersonicLaserActivity extends Activity {
         StringBuilder b=new StringBuilder();AudioDeviceInfo chosen=findExternal();
         for(AudioDeviceInfo d:audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)){b.append("• ").append(d.getProductName()).append(" • type ").append(d.getType());int[]r=d.getSampleRates();if(r!=null&&r.length>0)b.append(" • ").append(Arrays.toString(r)).append(" Hz");b.append('\n');}
         if(chosen!=null)b.append("\nPreferred route: ").append(chosen.getProductName());
+        b.append("\nUnified mode: identical full mix on L + R");
         routeInfo.setText(b.toString());
     }
 
