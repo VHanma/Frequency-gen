@@ -7,12 +7,12 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <application
         android:allowBackup="true"
-        android:label="InfoBeam Ω Hypersonic Laser"
+        android:label="InfoBeam Ω Parametric Lab v4"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".HypersonicLaserActivity"
+            android:name=".HypersonicV4Activity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
