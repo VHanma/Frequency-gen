@@ -1,0 +1,29 @@
+name: Publish Ghost Affirmations v1.3.0 APK
+
+on:
+  push:
+    branches:
+      - ghost-affirmations-release
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and verify signed APK
+        run: |
+          cat ghost-release/chunks/part-* | base64 --decode > GhostAffirmations-Layered-v1.3.0.apk
+          echo "41ad74ee73cde33ef42c1b2b3e5273dcf24beaf21a3ec0835a442afba8242352  GhostAffirmations-Layered-v1.3.0.apk" | sha256sum -c -
+      - name: Publish permanent public download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view ghost-affirmations-v1.3.0 >/dev/null 2>&1; then
+            gh release upload ghost-affirmations-v1.3.0 GhostAffirmations-Layered-v1.3.0.apk --clobber
+          else
+            gh release create ghost-affirmations-v1.3.0 GhostAffirmations-Layered-v1.3.0.apk --title "Ghost Affirmations Layers v1.3.0" --notes "Permanent public APK download. Adds the tiny see-through one-tap ON/OFF widget, optional close button, drag positioning, and text visibility down to 0.1%. Signed for direct update over v1.2.0."
+          fi
