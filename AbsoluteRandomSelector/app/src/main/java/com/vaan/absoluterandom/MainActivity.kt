@@ -380,9 +380,9 @@ private fun HistoryHeader(context:Context, history:List<DrawEntry>, clear:()->Un
         Column {Text("HISTORY",fontWeight=FontWeight.Black,fontSize=17.sp);Text("Newest first",color=Color(0xFF94A4B7),fontSize=11.sp)}
         Row {
             TextButton(onClick={
-                val text=history.joinToString("\n"){"${formatTime(it.time)}  ${it.result}  [${it.mode}, pool ${it.pool}]"}
-                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Random history",text))
-                Toast.makeText(context,"History copied",Toast.LENGTH_SHORT).show()
+                val text=history.asReversed().joinToString(separator=""){it.result}
+                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Selections",text))
+                Toast.makeText(context,"Selections copied",Toast.LENGTH_SHORT).show()
             }){Text("COPY")}
             TextButton(onClick=clear){Text("CLEAR")}
         }
