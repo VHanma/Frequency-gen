@@ -1,10 +1,9 @@
 package com.vaan.contactomega
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
@@ -16,6 +15,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.sqrt
@@ -28,7 +28,6 @@ class VisualLab(
 ) {
     private val executor = Executors.newSingleThreadExecutor()
     private var provider: ProcessCameraProvider? = null
-    private var imageCapture: ImageCapture? = null
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
     private var prevGrid: DoubleArray? = null
@@ -36,6 +35,9 @@ class VisualLab(
     private var mean = 0.0
     private var m2 = 0.0
     private var lastSnap = 0L
+    @Volatile private var lastThumb: ByteArray? = null
+    private val thumbW = 160
+    private val thumbH = 120
     private var started = false
 
     fun start(previewView: PreviewView, owner: LifecycleOwner) {
@@ -44,7 +46,6 @@ class VisualLab(
             try {
                 val p = future.get(); provider = p; p.unbindAll()
                 val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
-                imageCapture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build()
                 val recorder = Recorder.Builder().build(); videoCapture = VideoCapture.withOutput(recorder)
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                 analysis.setAnalyzer(executor) { image ->
@@ -62,6 +63,16 @@ class VisualLab(
                             }
                         }
                         val luma=sum/grid.size
+                        val thumb = ByteArray(thumbW * thumbH)
+                        var ti = 0
+                        for (ty in 0 until thumbH) {
+                            val sy = (ty * h / thumbH).coerceIn(0, h - 1)
+                            for (tx in 0 until thumbW) {
+                                val sx = (tx * w / thumbW).coerceIn(0, w - 1)
+                                thumb[ti++] = buf.get(sy * rowStride + sx * pixelStride)
+                            }
+                        }
+                        lastThumb = thumb
                         val prev=prevGrid
                         var diff=0.0
                         if(prev!=null) for(i in grid.indices) diff += abs(grid[i]-prev[i])
@@ -76,7 +87,7 @@ class VisualLab(
                         }
                     } catch (_: Throwable) {} finally { image.close() }
                 }
-                p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, imageCapture, videoCapture)
+                p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis, videoCapture)
                 started = true
                 store.event("VISUAL_LAB_START")
             } catch (t: Throwable) { onEvent("Camera lab error: ${t.message}") }
@@ -98,11 +109,14 @@ class VisualLab(
     }
     fun stopRecording(){ try{recording?.stop()}catch(_:Throwable){} }
     fun captureStill(name:String="snapshot-${store.elapsedMs()}.jpg"){
-        val ic=imageCapture ?: return; val f=File(store.ensure("VISUAL_ITC"),name)
-        ic.takePicture(ImageCapture.OutputFileOptions.Builder(f).build(),executor,object:ImageCapture.OnImageSavedCallback{
-            override fun onImageSaved(o:ImageCapture.OutputFileResults){ store.event("SNAPSHOT",mapOf("file" to f.name)) }
-            override fun onError(e:ImageCaptureException){ store.event("SNAPSHOT_ERROR",mapOf("error" to e.message)) }
-        })
+        val data = lastThumb ?: return
+        val f = File(store.ensure("VISUAL_ITC"), name)
+        try {
+            val pixels = IntArray(data.size) { i -> val y=data[i].toInt() and 0xff; (0xff shl 24) or (y shl 16) or (y shl 8) or y }
+            val bmp = Bitmap.createBitmap(pixels, thumbW, thumbH, Bitmap.Config.ARGB_8888)
+            FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+            bmp.recycle(); store.event("SNAPSHOT", mapOf("file" to f.name, "kind" to "analysis-frame"))
+        } catch (t:Throwable) { store.event("SNAPSHOT_ERROR", mapOf("error" to (t.message ?: "unknown"))) }
     }
     fun stop(){ if(!started && recording==null)return; stopRecording(); provider?.unbindAll(); provider=null; started=false; store.event("VISUAL_LAB_STOP") }
 }
