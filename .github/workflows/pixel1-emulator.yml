@@ -60,6 +60,16 @@ jobs:
           s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
           p.write_text(s)
 
+          # Upstream currently points Gradle 9.6.1 at the older 9.6.0 hash.
+          # Keep verification enabled and correct it to Gradle's published 9.6.1 SHA-256.
+          p = Path('gradle/wrapper/gradle-wrapper.properties')
+          s = p.read_text()
+          s = s.replace(
+              'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01',
+              '9c0f7faeeb306cb14e4279a3e084ca6b596894089a0638e68a07c945a32c9e14'
+          )
+          p.write_text(s)
+
           # Branding.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
