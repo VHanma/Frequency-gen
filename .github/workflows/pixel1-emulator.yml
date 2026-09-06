@@ -1,0 +1,130 @@
+name: Pixel 1 Emulator APK
+
+on:
+  push:
+    branches: [pixel1-emulator-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build components
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-37' \
+            'build-tools;36.1.0' \
+            'cmake;3.22.1' \
+            'ndk;27.3.13750724'
+
+      - name: Fetch VM engine
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/xoureldeen/Vectras-VM-Android.git pixel1vm
+
+      - name: Convert Vectras into Pixel 1 Emulator
+        shell: bash
+        run: |
+          cd pixel1vm
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # App identity. Keep Java namespace unchanged so the mature VM engine
+          # remains intact, but give this build its own installable package ID.
+          p = Path('app/build.gradle')
+          s = p.read_text()
+          s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services plugin removed")
+          s = s.replace("id 'com.google.firebase.crashlytics'", "// PixelOne: crashlytics plugin removed")
+          s = s.replace('applicationId "com.vectras.vm"', 'applicationId "com.vaan.pixelonevm"')
+          s = s.replace('versionName "4.4.9"', 'versionName "1.0.0-pixel1"')
+          p.write_text(s)
+
+          # Branding.
+          p = Path('app/src/main/res/values/strings.xml')
+          s = p.read_text()
+          s = s.replace('<string name="app_name">Vectras VM</string>', '<string name="app_name">Pixel 1 Emulator</string>')
+          p.write_text(s)
+
+          p = Path('app/src/main/java/com/vectras/qemu/Config.java')
+          s = p.read_text()
+          s = s.replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";')
+          p.write_text(s)
+
+          # Pixel 1 was ARM64. Make ARM64 the emulator-wide default instead of x86_64.
+          p = Path('app/src/main/java/com/vectras/qemu/MainSettingsManager.java')
+          s = p.read_text()
+          s = s.replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");')
+          p.write_text(s)
+
+          # Pixel 1 hardware profile defaults: 4 GB RAM, quad-core guest.
+          p = Path('app/src/main/java/com/vectras/vm/creator/VMCreatorActivity.java')
+          s = p.read_text()
+          s = s.replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile')
+          p.write_text(s)
+
+          # Add an in-app-visible build marker without disrupting translations.
+          p = Path('app/src/main/res/values/strings.xml')
+          s = p.read_text()
+          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.x · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
+          p.write_text(s)
+
+          # Rename project for generated metadata and APK build logs.
+          p = Path('settings.gradle')
+          s = p.read_text().replace('rootProject.name = "Vectras VM"', 'rootProject.name = "Pixel 1 Emulator"')
+          p.write_text(s)
+          PY
+
+          cat > PIXEL1_BUILD.txt <<'EOF'
+          Pixel 1 Emulator profile
+          Codename: sailfish
+          Guest target: Android 7.1.x / API 25
+          Display target: 1080 x 1920
+          RAM: 4096 MB
+          CPU profile: ARM64, quad-core target
+          Engine: QEMU/Vectras-derived Android VM engine
+
+          The APK intentionally does not redistribute Google's Pixel factory image.
+          Load a legally obtained Android 7.1-compatible guest image into the VM.
+          EOF
+
+      - name: Build APK
+        shell: bash
+        run: |
+          cd pixel1vm
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Rename APK
+        shell: bash
+        run: |
+          mkdir -p out
+          cp pixel1vm/app/build/outputs/apk/debug/app-debug.apk out/Pixel1-Emulator-v1.0-debug.apk
+          cp pixel1vm/PIXEL1_BUILD.txt out/PIXEL1_BUILD.txt
+
+      - name: Upload Pixel 1 Emulator
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pixel1-Emulator-APK
+          path: out/*
+          if-no-files-found: error
