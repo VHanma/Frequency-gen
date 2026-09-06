@@ -1,8 +1,8 @@
-name: Build OMEGA NHI Contact APK
+name: Build OMEGA NHI Contact APK v2
 
 on:
   push:
-    branches: [contact-engine-omega-v1]
+    branches: [contact-engine-omega-v2-lab]
     paths:
       - 'ContactEngineOmega/**'
       - '.github/workflows/build-contact-engine-omega.yml'
@@ -14,7 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,6 +27,14 @@ jobs:
         uses: android-actions/setup-android@v3
       - name: SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Bundle offline Vosk English model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ContactEngineOmega/app/src/main/assets
+          curl -L --retry 3 --fail https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -o /tmp/vosk.zip
+          unzip -q /tmp/vosk.zip -d ContactEngineOmega/app/src/main/assets
+          test -f ContactEngineOmega/app/src/main/assets/vosk-model-small-en-us-0.15/am/final.mdl
       - name: Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -40,16 +48,16 @@ jobs:
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
           IN="ContactEngineOmega/app/build/outputs/apk/release/app-release-unsigned.apk"
-          "$BT/zipalign" -f -p 4 "$IN" OMEGA-Contact-aligned.apk
-          keytool -genkeypair -noprompt -keystore omega-contact.jks -storepass contactomega -keypass contactomega -alias omega -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=OMEGA NHI Contact, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks omega-contact.jks --ks-key-alias omega --ks-pass pass:contactomega --key-pass pass:contactomega --out OMEGA-NHI-Contact-v1.0.apk OMEGA-Contact-aligned.apk
-          "$BT/apksigner" verify --verbose OMEGA-NHI-Contact-v1.0.apk
-          sha256sum OMEGA-NHI-Contact-v1.0.apk > OMEGA-NHI-Contact-v1.0.sha256
+          "$BT/zipalign" -f -p 4 "$IN" OMEGA-Contact-v2-aligned.apk
+          keytool -genkeypair -noprompt -keystore omega-contact-v2.jks -storepass contactomega -keypass contactomega -alias omega -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=OMEGA Contact Lab v2, O=VHanma, C=US"
+          "$BT/apksigner" sign --ks omega-contact-v2.jks --ks-key-alias omega --ks-pass pass:contactomega --key-pass pass:contactomega --out OMEGA-NHI-Contact-Lab-v2.0.apk OMEGA-Contact-v2-aligned.apk
+          "$BT/apksigner" verify --verbose OMEGA-NHI-Contact-Lab-v2.0.apk
+          sha256sum OMEGA-NHI-Contact-Lab-v2.0.apk > OMEGA-NHI-Contact-Lab-v2.0.sha256
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: OMEGA-NHI-Contact-installable-apk
+          name: OMEGA-NHI-Contact-Lab-v2-installable
           path: |
-            OMEGA-NHI-Contact-v1.0.apk
-            OMEGA-NHI-Contact-v1.0.sha256
+            OMEGA-NHI-Contact-Lab-v2.0.apk
+            OMEGA-NHI-Contact-Lab-v2.0.sha256
           retention-days: 14
