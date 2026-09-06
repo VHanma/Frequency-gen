@@ -21,6 +21,20 @@ object WavUtils {
         }
     }
 
+    fun writeFloatPcm16Wav(samples: FloatArray, wav: File, sampleRate: Int) {
+        require(sampleRate in 8_000..192_000) { "Unsupported sample rate: $sampleRate" }
+        require(samples.isNotEmpty()) { "Cannot write an empty voice reference" }
+        val pcm = floatToPcm16(samples)
+        FileOutputStream(wav).use { out ->
+            val h = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+            h.put("RIFF".toByteArray()); h.putInt(pcm.size + 36); h.put("WAVE".toByteArray())
+            h.put("fmt ".toByteArray()); h.putInt(16); h.putShort(1); h.putShort(1)
+            h.putInt(sampleRate); h.putInt(sampleRate * 2); h.putShort(2); h.putShort(16)
+            h.put("data".toByteArray()); h.putInt(pcm.size)
+            out.write(h.array()); out.write(pcm); out.fd.sync()
+        }
+    }
+
     fun readPcm16Mono(file: File): Wav {
         val bytes = file.readBytes()
         require(bytes.size >= 44 && String(bytes, 0, 4) == "RIFF") { "Only PCM WAV is supported for clone references" }
@@ -28,19 +42,26 @@ object WavUtils {
         var sampleRate = 16000
         var channels = 1
         var bits = 16
+        var audioFormat = 1
         var dataOffset = -1
         var dataSize = 0
         var p = 12
         while (p + 8 <= bytes.size) {
             val id = String(bytes, p, 4)
             val size = bb.getInt(p + 4)
-            if (id == "fmt " && size >= 16) {
+            require(size >= 0) { "Corrupt WAV chunk" }
+            if (id == "fmt " && size >= 16 && p + 8 + size <= bytes.size) {
+                audioFormat = bb.getShort(p + 8).toInt()
                 channels = bb.getShort(p + 10).toInt(); sampleRate = bb.getInt(p + 12); bits = bb.getShort(p + 22).toInt()
             } else if (id == "data") { dataOffset = p + 8; dataSize = minOf(size, bytes.size - dataOffset); break }
-            p += 8 + size + (size and 1)
+            val next = p.toLong() + 8L + size.toLong() + (size and 1)
+            require(next <= Int.MAX_VALUE) { "Corrupt WAV size" }
+            p = next.toInt()
         }
-        require(dataOffset >= 0 && bits == 16) { "Reference must be 16-bit PCM WAV" }
+        require(dataOffset >= 0 && audioFormat == 1 && bits == 16 && channels > 0) { "Reference must be 16-bit PCM WAV" }
+        require(sampleRate in 8_000..192_000) { "Unsupported WAV sample rate" }
         val frames = dataSize / 2 / channels
+        require(frames > 0) { "WAV contains no audio samples" }
         val out = FloatArray(frames)
         var q = dataOffset
         for (i in 0 until frames) {
