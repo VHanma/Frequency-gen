@@ -8,9 +8,7 @@ import org.json.JSONObject
 import org.vosk.Model
 import org.vosk.Recognizer
 import java.io.File
-import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -29,7 +27,9 @@ class AudioItcEngine(
     private var model: Model? = null
     private var rawWriter: WavWriter? = null
     private var cleanWriter: WavWriter? = null
-    private val ring = ArrayDeque<Short>()
+    private val ring = ShortArray(48000 * 8)
+    private var ringPos = 0
+    private var ringCount = 0
     private var lastCandidateMs = 0L
     private val entropyBits = ArrayList<Int>(256)
     private var hpPrevIn = 0.0
@@ -137,9 +137,12 @@ class AudioItcEngine(
                     onEntropyTrial(ones, z)
                 }
                 synchronized(ring) {
-                    for (i in 0 until n) ring.addLast(buf[i])
-                    val maxRing = sr * 8
-                    while (ring.size > maxRing) ring.removeFirst()
+                    for (i in 0 until n) {
+                        ring[ringPos] = buf[i]
+                        ringPos++
+                        if (ringPos >= ring.size) ringPos = 0
+                        if (ringCount < ring.size) ringCount++
+                    }
                 }
                 var sum = 0.0; var crossings = 0
                 for (i in 0 until n) {
@@ -201,7 +204,8 @@ class AudioItcEngine(
             if (text.isBlank()) return
             var conf: Double? = null
             if (!partial && o.has("result")) {
-                val a = o.getJSONArray("result"); if (a.length() > 0) {
+                val a = o.getJSONArray("result")
+                if (a.length() > 0) {
                     var s = 0.0
                     for (i in 0 until a.length()) s += a.getJSONObject(i).optDouble("conf", 0.0)
                     conf = s / a.length()
@@ -217,7 +221,12 @@ class AudioItcEngine(
     private fun bookmarkCandidate(reason: String, score: Double) {
         store.event("AUDIO_CANDIDATE", mapOf("reason" to reason, "score" to score, "sourceOverlap" to sourceActive()))
         val folder = store.dir ?: return
-        val copy: ShortArray = synchronized(ring) { ShortArray(ring.size) { idx -> ring.elementAt(idx) } }
+        val copy: ShortArray = synchronized(ring) {
+            val out = ShortArray(ringCount)
+            val start = if (ringCount == ring.size) ringPos else 0
+            for (i in 0 until ringCount) out[i] = ring[(start + i) % ring.size]
+            out
+        }
         if (copy.isEmpty()) return
         val id = store.elapsedMs()
         try {
