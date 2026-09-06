@@ -49,7 +49,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # App identity and host build target.
           p = Path('app/build.gradle')
           s = p.read_text()
           s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services plugin removed")
@@ -60,22 +59,18 @@ jobs:
           s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
           p.write_text(s)
 
-          # Keep every local Android module on the stable Android 16 SDK.
           for gradle in Path('.').rglob('build.gradle'):
               text = gradle.read_text(errors='ignore')
               new = text.replace('compileSdkVersion 37', 'compileSdkVersion 36')
               if new != text:
                   gradle.write_text(new)
 
-          # Recent library releases moved to API 37. Pin the last stable API-36 line.
           p = Path('gradle/libs.versions.toml')
           s = p.read_text()
           s = s.replace('coreKtx = "1.19.0"', 'coreKtx = "1.17.0"')
-          s = s.replace('glide = "5.0.9"', 'glide = "5.0.8"')
+          s = s.replace('glide = "5.0.9"', 'glide = "5.0.7"')
           p.write_text(s)
 
-          # Upstream currently points Gradle 9.6.1 at the older 9.6.0 hash.
-          # Keep verification enabled and correct it to Gradle's published 9.6.1 SHA-256.
           p = Path('gradle/wrapper/gradle-wrapper.properties')
           s = p.read_text()
           s = s.replace(
@@ -84,7 +79,6 @@ jobs:
           )
           p.write_text(s)
 
-          # Branding.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
           s = s.replace('<string name="app_name">Vectras VM</string>', '<string name="app_name">Pixel 1 Emulator</string>')
@@ -95,19 +89,16 @@ jobs:
           s = s.replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";')
           p.write_text(s)
 
-          # Pixel 1 was ARM64. Make ARM64 the VM default.
           p = Path('app/src/main/java/com/vectras/qemu/MainSettingsManager.java')
           s = p.read_text()
           s = s.replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");')
           p.write_text(s)
 
-          # Pixel 1 profile defaults.
           p = Path('app/src/main/java/com/vectras/vm/creator/VMCreatorActivity.java')
           s = p.read_text()
           s = s.replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile')
           p.write_text(s)
 
-          # Profile marker.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
           s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.2 · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
