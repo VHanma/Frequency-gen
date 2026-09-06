@@ -24,7 +24,7 @@ class SessionStore(private val context: Context) {
             put("sessionId", sessionId)
             put("startEpochMs", startMs)
             put("mode", mode)
-            put("appVersion", "2.0.0")
+            put("appVersion", "2.0.1")
             put("config", JSONObject(config))
         }
         File(folder, "session.json").writeText(meta.toString(2))
