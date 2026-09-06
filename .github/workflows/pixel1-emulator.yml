@@ -32,8 +32,8 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager \
             'platform-tools' \
-            'platforms;android-37' \
-            'build-tools;36.1.0' \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
             'cmake;3.22.1' \
             'ndk;27.3.13750724'
 
@@ -48,16 +48,16 @@ jobs:
           cd pixel1vm
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          # App identity. Keep Java namespace unchanged so the mature VM engine
-          # remains intact, but give this build its own installable package ID.
+          # App identity and host build target.
           p = Path('app/build.gradle')
           s = p.read_text()
           s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services plugin removed")
           s = s.replace("id 'com.google.firebase.crashlytics'", "// PixelOne: crashlytics plugin removed")
           s = s.replace('applicationId "com.vectras.vm"', 'applicationId "com.vaan.pixelonevm"')
           s = s.replace('versionName "4.4.9"', 'versionName "1.0.0-pixel1"')
+          s = s.replace('compileSdk = 37', 'compileSdk = 36')
+          s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
           p.write_text(s)
 
           # Branding.
@@ -71,25 +71,24 @@ jobs:
           s = s.replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";')
           p.write_text(s)
 
-          # Pixel 1 was ARM64. Make ARM64 the emulator-wide default instead of x86_64.
+          # Pixel 1 was ARM64. Make ARM64 the VM default.
           p = Path('app/src/main/java/com/vectras/qemu/MainSettingsManager.java')
           s = p.read_text()
           s = s.replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");')
           p.write_text(s)
 
-          # Pixel 1 hardware profile defaults: 4 GB RAM, quad-core guest.
+          # Pixel 1 profile defaults.
           p = Path('app/src/main/java/com/vectras/vm/creator/VMCreatorActivity.java')
           s = p.read_text()
           s = s.replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile')
           p.write_text(s)
 
-          # Add an in-app-visible build marker without disrupting translations.
+          # Profile marker.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
-          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.x · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
+          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.2 · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
           p.write_text(s)
 
-          # Rename project for generated metadata and APK build logs.
           p = Path('settings.gradle')
           s = p.read_text().replace('rootProject.name = "Vectras VM"', 'rootProject.name = "Pixel 1 Emulator"')
           p.write_text(s)
@@ -98,14 +97,17 @@ jobs:
           cat > PIXEL1_BUILD.txt <<'EOF'
           Pixel 1 Emulator profile
           Codename: sailfish
-          Guest target: Android 7.1.x / API 25
+          Guest target: Android 7.1.2 / API 25
           Display target: 1080 x 1920
           RAM: 4096 MB
           CPU profile: ARM64, quad-core target
           Engine: QEMU/Vectras-derived Android VM engine
 
-          The APK intentionally does not redistribute Google's Pixel factory image.
-          Load a legally obtained Android 7.1-compatible guest image into the VM.
+          Host APK compiles against Android API 36. That is independent from
+          the emulated guest Android version.
+
+          This build does not redistribute Google's proprietary Pixel factory image.
+          It accepts compatible Android guest disk images through the VM interface.
           EOF
 
       - name: Build APK
