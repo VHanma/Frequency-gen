@@ -38,14 +38,9 @@ object VoiceGenome {
     fun quality(file: File): VoiceQuality {
         val w = WavUtils.readPcm16Mono(file)
         val s = w.samples
-        var sumSq = 0.0
-        var silence = 0
-        var clipping = 0
-        var peak = 0f
-        var lowEnergy = 1f
+        var sumSq = 0.0; var silence = 0; var clipping = 0; var peak = 0f; var lowEnergy = 1f
         for (v in s) {
-            val a = abs(v)
-            sumSq += (v * v).toDouble()
+            val a = abs(v); sumSq += (v * v).toDouble()
             if (a < 0.008f) silence++
             if (a > 0.985f) clipping++
             if (a > peak) peak = a
@@ -59,17 +54,46 @@ object VoiceGenome {
         var score = 100
         if (seconds < 3f) score -= 35 else if (seconds < 6f) score -= 15
         if (seconds > 18f) score -= 5
-        score -= (silencePct * 0.35f).toInt()
-        score -= (clipPct * 3).coerceAtMost(35)
+        score -= (silencePct * 0.35f).toInt(); score -= (clipPct * 3).coerceAtMost(35)
         if (rms < 0.015f) score -= 25 else if (rms < 0.035f) score -= 10
         if (peak < 0.08f) score -= 12
         return VoiceQuality(score.coerceIn(0, 100), seconds, rms, silencePct, clipPct, dynamic)
     }
 
+    /**
+     * Lightweight on-device contamination gate. This is deliberately called an acoustic
+     * consistency score, not speaker verification: it compares stable voice-texture statistics
+     * and catches many obviously unrelated/noisy samples without pretending to be biometric ID.
+     */
+    fun compatibility(profile: CloneProfile, candidate: File): Int {
+        val a = fingerprint(bestReference(profile))
+        val b = fingerprint(candidate)
+        var d = 0.0
+        for (i in a.indices) d += abs(a[i] - b[i])
+        return (100.0 - d * 115.0).toInt().coerceIn(0, 100)
+    }
+
+    private fun fingerprint(file: File): DoubleArray {
+        val w = WavUtils.readPcm16Mono(file); val s = w.samples
+        if (s.isEmpty()) return DoubleArray(5)
+        val step = (s.size / 16000).coerceAtLeast(1)
+        var sumSq = 0.0; var absSum = 0.0; var z = 0; var peak = 0.0; var diff = 0.0; var n = 0
+        var prev = s[0].toDouble(); var i = 0
+        while (i < s.size) {
+            val v = s[i].toDouble(); val av = abs(v)
+            sumSq += v*v; absSum += av; peak = maxOf(peak,av); diff += abs(v-prev)
+            if ((v >= 0) != (prev >= 0)) z++
+            prev=v; n++; i+=step
+        }
+        val rms=sqrt(sumSq/n.coerceAtLeast(1)); val meanAbs=absSum/n.coerceAtLeast(1)
+        val zcr=z.toDouble()/n.coerceAtLeast(1); val rough=diff/n.coerceAtLeast(1)
+        val crest=if(rms>0.0001) (peak/rms).coerceAtMost(8.0)/8.0 else 0.0
+        return doubleArrayOf(rms.coerceAtMost(.5)*2, meanAbs.coerceAtMost(.4)*2.5, zcr.coerceAtMost(.5)*2, rough.coerceAtMost(.5)*2, crest)
+    }
+
     fun ensureLegacy(profile: CloneProfile) {
         if (samples(profile.id).isNotEmpty()) return
-        val f = File(profile.wavPath)
-        if (!f.exists()) return
+        val f = File(profile.wavPath); if (!f.exists()) return
         addSample(profile.id, f, "original", copy = false)
     }
 
@@ -81,56 +105,37 @@ object VoiceGenome {
         val q = quality(dst)
         val item = GenomeSample(UUID.randomUUID().toString(), dst.absolutePath, sourceLabel, q, System.currentTimeMillis())
         val list = samples(profileId).toMutableList().apply { add(item) }.sortedByDescending { it.quality.score }
-        save(profileId, list)
-        return item
+        save(profileId, list); return item
     }
 
     fun samples(profileId: String): List<GenomeSample> {
         val arr = runCatching { JSONArray(prefs().getString(key(profileId), "[]")) }.getOrElse { JSONArray() }
         val out = mutableListOf<GenomeSample>()
         for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val p = o.optString("path")
+            val o = arr.optJSONObject(i) ?: continue; val p = o.optString("path")
             if (!File(p).exists()) continue
-            val q = VoiceQuality(
-                o.optInt("score", 0), o.optDouble("seconds", 0.0).toFloat(), o.optDouble("rms", 0.0).toFloat(),
-                o.optInt("silence", 0), o.optInt("clip", 0), o.optDouble("dynamic", 0.0).toFloat()
-            )
+            val q = VoiceQuality(o.optInt("score", 0), o.optDouble("seconds", 0.0).toFloat(), o.optDouble("rms", 0.0).toFloat(), o.optInt("silence", 0), o.optInt("clip", 0), o.optDouble("dynamic", 0.0).toFloat())
             out += GenomeSample(o.optString("id"), p, o.optString("source"), q, o.optLong("createdAt"))
         }
         return out.sortedByDescending { it.quality.score }
     }
 
-    fun bestReference(profile: CloneProfile): File {
-        ensureLegacy(profile)
-        return samples(profile.id).firstOrNull()?.let { File(it.path) } ?: File(profile.wavPath)
-    }
+    fun bestReference(profile: CloneProfile): File { ensureLegacy(profile); return samples(profile.id).firstOrNull()?.let { File(it.path) } ?: File(profile.wavPath) }
 
     fun summary(profile: CloneProfile): String {
-        ensureLegacy(profile)
-        val s = samples(profile.id)
-        val best = s.firstOrNull()?.quality
+        ensureLegacy(profile); val s = samples(profile.id); val best = s.firstOrNull()?.quality
         return if (best == null) "1 reference" else "${s.size} sample${if (s.size == 1) "" else "s"} • ${best.summary()}"
     }
 
     fun delete(profileId: String) {
-        samples(profileId).forEach { sample ->
-            val f = File(sample.path)
-            if (f.path.contains("/genomes/")) runCatching { f.delete() }
-        }
-        File(app.filesDir, "genomes/$profileId").deleteRecursively()
-        prefs().edit().remove(key(profileId)).apply()
+        samples(profileId).forEach { sample -> val f=File(sample.path); if(f.path.contains("/genomes/")) runCatching{f.delete()} }
+        File(app.filesDir,"genomes/$profileId").deleteRecursively(); prefs().edit().remove(key(profileId)).apply()
     }
 
     private fun save(profileId: String, list: List<GenomeSample>) {
-        val a = JSONArray()
-        list.forEach { s ->
-            a.put(JSONObject().apply {
-                put("id", s.id); put("path", s.path); put("source", s.source); put("createdAt", s.createdAt)
-                put("score", s.quality.score); put("seconds", s.quality.seconds); put("rms", s.quality.rms)
-                put("silence", s.quality.silencePercent); put("clip", s.quality.clippingPercent); put("dynamic", s.quality.dynamicRange)
-            })
-        }
-        prefs().edit().putString(key(profileId), a.toString()).apply()
+        val a=JSONArray(); list.forEach { s -> a.put(JSONObject().apply {
+            put("id",s.id); put("path",s.path); put("source",s.source); put("createdAt",s.createdAt)
+            put("score",s.quality.score); put("seconds",s.quality.seconds); put("rms",s.quality.rms); put("silence",s.quality.silencePercent); put("clip",s.quality.clippingPercent); put("dynamic",s.quality.dynamicRange)
+        })}; prefs().edit().putString(key(profileId),a.toString()).apply()
     }
 }
