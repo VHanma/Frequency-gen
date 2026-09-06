@@ -13,6 +13,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildTypes {
@@ -27,7 +28,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    packaging { resources.excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*") }
+    packaging {
+        resources.excludes += setOf(
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "sherpa-onnx/native/**"
+        )
+    }
 }
 
 dependencies {
