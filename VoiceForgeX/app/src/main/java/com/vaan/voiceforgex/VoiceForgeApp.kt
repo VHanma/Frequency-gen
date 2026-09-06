@@ -6,5 +6,6 @@ class VoiceForgeApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CloneRepository.init(this)
+        VoiceGenome.init(this)
     }
 }
