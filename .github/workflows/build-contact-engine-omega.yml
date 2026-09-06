@@ -50,14 +50,14 @@ jobs:
           IN="ContactEngineOmega/app/build/outputs/apk/release/app-release-unsigned.apk"
           "$BT/zipalign" -f -p 4 "$IN" OMEGA-Contact-v2-aligned.apk
           keytool -genkeypair -noprompt -keystore omega-contact-v2.jks -storepass contactomega -keypass contactomega -alias omega -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=OMEGA Contact Lab v2, O=VHanma, C=US"
-          "$BT/apksigner" sign --ks omega-contact-v2.jks --ks-key-alias omega --ks-pass pass:contactomega --key-pass pass:contactomega --out OMEGA-NHI-Contact-Lab-v2.0.apk OMEGA-Contact-v2-aligned.apk
-          "$BT/apksigner" verify --verbose OMEGA-NHI-Contact-Lab-v2.0.apk
-          sha256sum OMEGA-NHI-Contact-Lab-v2.0.apk > OMEGA-NHI-Contact-Lab-v2.0.sha256
+          "$BT/apksigner" sign --ks omega-contact-v2.jks --ks-key-alias omega --ks-pass pass:contactomega --key-pass pass:contactomega --out OMEGA-NHI-Contact-Lab-v2.0.1.apk OMEGA-Contact-v2-aligned.apk
+          "$BT/apksigner" verify --verbose OMEGA-NHI-Contact-Lab-v2.0.1.apk
+          sha256sum OMEGA-NHI-Contact-Lab-v2.0.1.apk > OMEGA-NHI-Contact-Lab-v2.0.1.sha256
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: OMEGA-NHI-Contact-Lab-v2-installable
+          name: OMEGA-NHI-Contact-Lab-v2.0.1-installable
           path: |
-            OMEGA-NHI-Contact-Lab-v2.0.apk
-            OMEGA-NHI-Contact-Lab-v2.0.sha256
+            OMEGA-NHI-Contact-Lab-v2.0.1.apk
+            OMEGA-NHI-Contact-Lab-v2.0.1.sha256
           retention-days: 14
