@@ -8,11 +8,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.vaan.contactomega"
+        applicationId = "com.vaan.contactomega.v2"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "2.0.0"
+        ndk { abiFilters += listOf("arm64-v8a") }
+        versionCode = 201
+        versionName = "2.0.1"
     }
 
     buildTypes {
@@ -36,15 +37,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
-
     implementation("androidx.camera:camera-core:1.5.0")
     implementation("androidx.camera:camera-camera2:1.5.0")
     implementation("androidx.camera:camera-lifecycle:1.5.0")
     implementation("androidx.camera:camera-view:1.5.0")
     implementation("androidx.camera:camera-video:1.5.0")
-
     implementation("com.alphacephei:vosk-android:0.3.75@aar")
     implementation("net.java.dev.jna:jna:5.18.1@aar")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
