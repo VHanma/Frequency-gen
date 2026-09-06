@@ -37,5 +37,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.apache.commons:commons-compress:1.27.1")
-    implementation("com.github.k2-fsa:sherpa-onnx:v1.13.7")
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.13.7") {
+        exclude(group = "com.github.k2-fsa.sherpa-onnx", module = "sherpa-onnx-jvm")
+    }
 }
