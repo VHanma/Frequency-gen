@@ -12,7 +12,10 @@ object CloneRepository {
     private const val KEY = "profiles"
     private const val SELECTED = "selected"
 
-    fun init(context: Context) { app = context.applicationContext }
+    fun init(context: Context) {
+        app = context.applicationContext
+        VoiceGenome.init(app)
+    }
 
     private fun prefs() = app.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
@@ -22,9 +25,7 @@ object CloneRepository {
         return buildList {
             for (i in 0 until a.length()) {
                 val o = a.optJSONObject(i) ?: continue
-                val p = CloneProfile(
-                    o.optString("id"), o.optString("name"), o.optString("wavPath"), o.optLong("createdAt")
-                )
+                val p = CloneProfile(o.optString("id"), o.optString("name"), o.optString("wavPath"), o.optLong("createdAt"))
                 if (p.id.isNotBlank() && File(p.wavPath).exists()) add(p)
             }
         }.sortedByDescending { it.createdAt }
@@ -37,12 +38,19 @@ object CloneRepository {
         source.copyTo(dst, overwrite = true)
         val p = CloneProfile(id, name.ifBlank { "Clone ${all().size + 1}" }, dst.absolutePath, System.currentTimeMillis())
         save(all() + p)
+        VoiceGenome.addSample(id, dst, "primary", copy = false)
         select(p.id)
         return p
     }
 
+    fun addGenomeSample(profileId: String, source: File, sourceLabel: String): GenomeSample {
+        require(all().any { it.id == profileId }) { "Clone no longer exists" }
+        return VoiceGenome.addSample(profileId, source, sourceLabel, copy = true)
+    }
+
     fun delete(id: String) {
         all().firstOrNull { it.id == id }?.let { runCatching { File(it.wavPath).delete() } }
+        VoiceGenome.delete(id)
         val remaining = all().filterNot { it.id == id }
         save(remaining)
         if (selectedId() == id) select(remaining.firstOrNull()?.id)
