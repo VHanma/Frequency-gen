@@ -60,6 +60,20 @@ jobs:
           s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
           p.write_text(s)
 
+          # Keep every local Android module on the stable Android 16 SDK.
+          for gradle in Path('.').rglob('build.gradle'):
+              text = gradle.read_text(errors='ignore')
+              new = text.replace('compileSdkVersion 37', 'compileSdkVersion 36')
+              if new != text:
+                  gradle.write_text(new)
+
+          # Recent library releases moved to API 37. Pin the last stable API-36 line.
+          p = Path('gradle/libs.versions.toml')
+          s = p.read_text()
+          s = s.replace('coreKtx = "1.19.0"', 'coreKtx = "1.17.0"')
+          s = s.replace('glide = "5.0.9"', 'glide = "5.0.8"')
+          p.write_text(s)
+
           # Upstream currently points Gradle 9.6.1 at the older 9.6.0 hash.
           # Keep verification enabled and correct it to Gradle's published 9.6.1 SHA-256.
           p = Path('gradle/wrapper/gradle-wrapper.properties')
@@ -118,6 +132,9 @@ jobs:
 
           This build does not redistribute Google's proprietary Pixel factory image.
           It accepts compatible Android guest disk images through the VM interface.
+
+          VM engine source: https://github.com/xoureldeen/Vectras-VM-Android
+          Vectras VM is licensed under GPL-2.0.
           EOF
 
       - name: Build APK
@@ -126,6 +143,13 @@ jobs:
           cd pixel1vm
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
+
+      - name: Verify APK identity
+        shell: bash
+        run: |
+          APK=pixel1vm/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -20
 
       - name: Rename APK
         shell: bash
