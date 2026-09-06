@@ -14,6 +14,13 @@ object CloneEngine {
     @Volatile private var tts: OfflineTts? = null
     @Volatile private var modelPath: String? = null
 
+    fun invalidate() {
+        synchronized(this) {
+            tts = null
+            modelPath = null
+        }
+    }
+
     private fun build(context: Context): OfflineTts {
         val d = ModelManager.dir(context)
         check(ModelManager.isReady(context)) { "Voice model is not downloaded yet" }
