@@ -28,7 +28,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    packaging { resources.excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*") }
+    packaging {
+        resources.excludes += setOf(
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "sherpa-onnx/native/osx-aarch64/**",
+            "sherpa-onnx/native/osx-x64/**",
+            "sherpa-onnx/native/win-arm64/**",
+            "sherpa-onnx/native/win-x64/**",
+        )
+    }
 }
 
 dependencies {
