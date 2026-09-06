@@ -8,18 +8,17 @@
 
     <queries>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
     </queries>
 
     <application
         android:name=".VoiceForgeApp"
         android:allowBackup="true"
-        android:label="VoiceForge X"
+        android:label="VoiceForge Ω"
         android:largeHeap="true"
         android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -30,10 +29,7 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".CloneTtsService"
-            android:label="VoiceForge X Clones"
-            android:exported="true">
+        <service android:name=".CloneTtsService" android:label="VoiceForge Ω Clones" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.TTS_SERVICE" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -41,10 +37,7 @@
             <meta-data android:name="android.speech.tts" android:resource="@xml/tts_engine" />
         </service>
 
-        <service
-            android:name=".OverlayService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
+        <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="Floating cloned-voice control overlay" />
         </service>
     </application>
