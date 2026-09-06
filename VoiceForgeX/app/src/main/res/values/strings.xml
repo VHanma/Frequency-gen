@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">VoiceForge X</string>
+    <string name="tts_engine_label">VoiceForge X Clones</string>
+    <string name="accessibility_desc">Optional floating voice controls and call relay controls.</string>
+</resources>
