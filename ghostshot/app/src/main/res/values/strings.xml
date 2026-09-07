@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">GhostShot Widget</string>
+    <string name="accessibility_desc">Adds a tiny movable screenshot button. Tap captures, drag moves, long-press opens Hide and Close.</string>
+</resources>
