@@ -42,35 +42,50 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/xoureldeen/Vectras-VM-Android.git pixel1vm
 
-      - name: Convert Vectras into Pixel 1 Emulator
+      - name: Convert Vectras into crash-safe Pixel 1 Emulator
         shell: bash
         run: |
           cd pixel1vm
           python3 - <<'PY'
           from pathlib import Path
 
+          # Host app identity and stable Android 16 build target.
           p = Path('app/build.gradle')
           s = p.read_text()
-          s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services plugin removed")
+          s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services removed")
           s = s.replace("id 'com.google.firebase.crashlytics'", "// PixelOne: crashlytics plugin removed")
           s = s.replace('applicationId "com.vectras.vm"', 'applicationId "com.vaan.pixelonevm"')
-          s = s.replace('versionName "4.4.9"', 'versionName "1.0.0-pixel1"')
+          s = s.replace('versionName "4.4.9"', 'versionName "1.0.1-pixel1-fixed"')
           s = s.replace('compileSdk = 37', 'compileSdk = 36')
           s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
+
+          # Remove Firebase runtime SDKs entirely. The previous build removed the
+          # Gradle plugins but still executed Crashlytics from Application.onCreate,
+          # which can terminate the process before the first Activity is visible.
+          for dep in [
+              '    implementation platform(libs.firebase.bom)\n',
+              '    implementation libs.firebase.analytics\n',
+              '    implementation libs.firebase.crashlytics\n',
+              '    implementation libs.firebase.messaging\n',
+          ]:
+              s = s.replace(dep, '')
           p.write_text(s)
 
+          # Keep all local Android modules on API 36.
           for gradle in Path('.').rglob('build.gradle'):
               text = gradle.read_text(errors='ignore')
               new = text.replace('compileSdkVersion 37', 'compileSdkVersion 36')
               if new != text:
                   gradle.write_text(new)
 
+          # API-36-compatible dependency line.
           p = Path('gradle/libs.versions.toml')
           s = p.read_text()
           s = s.replace('coreKtx = "1.19.0"', 'coreKtx = "1.17.0"')
           s = s.replace('glide = "5.0.9"', 'glide = "5.0.7"')
           p.write_text(s)
 
+          # Correct upstream Gradle wrapper checksum.
           p = Path('gradle/wrapper/gradle-wrapper.properties')
           s = p.read_text()
           s = s.replace(
@@ -79,29 +94,48 @@ jobs:
           )
           p.write_text(s)
 
+          # Strip Firebase calls from Application startup.
+          p = Path('app/src/main/java/com/vectras/vm/VectrasApp.java')
+          s = p.read_text()
+          s = s.replace('import com.google.firebase.analytics.FirebaseAnalytics;\n', '')
+          s = s.replace('import com.google.firebase.crashlytics.FirebaseCrashlytics;\n', '')
+          s = s.replace('import com.vectras.vm.utils.GmsChecker;\n', '')
+          firebase_block = '''        FirebaseCrashlytics.getInstance().log("App started: " + AppConfig.vectrasVersion);\n\n        if (GmsChecker.isAvailable(this)) {\n            AppConfig.isGmsAvailable = true;\n            FirebaseAnalytics.getInstance(this).logEvent(FirebaseAnalytics.Event.APP_OPEN, null);\n        } else {\n            FirebaseCrashlytics.getInstance().log("Device does not support GMS.");\n        }\n'''
+          s = s.replace(firebase_block, '        // PixelOne: offline startup; no Firebase initialization.\n')
+          p.write_text(s)
+
+          # Preserve the FCM API surface used by settings/MainActivity, but make it
+          # a local no-op so no Firebase Messaging provider is required at runtime.
+          Path('app/src/main/java/com/vectras/vm/fcm/FCMManager.java').write_text('''package com.vectras.vm.fcm;\n\npublic final class FCMManager {\n    private FCMManager() {}\n    public static void subscribe() {}\n    public static void unsubscribe() {}\n}\n''')
+
+          Path('app/src/main/java/com/vectras/vm/fcm/FCMService.java').write_text('''package com.vectras.vm.fcm;\n\nimport android.app.Service;\nimport android.content.Intent;\nimport android.os.IBinder;\nimport androidx.annotation.Nullable;\n\npublic class FCMService extends Service {\n    @Nullable\n    @Override\n    public IBinder onBind(Intent intent) { return null; }\n}\n''')
+
+          # Harden splash initialization so a non-essential folder/cleanup failure
+          # cannot take the whole process down on newer Android releases.
+          p = Path('app/src/main/java/com/vectras/vm/SplashActivity.java')
+          s = p.read_text()
+          old = '''        new Thread(() -> {\n            setupFolders();\n            MainSettingsManager.setOrientationSetting(this, 1);\n            setupFiles();\n            cleanUp();\n            checkLastANR();\n            runOnUiThread(this::finishSplash);\n        }).start();\n'''
+          new = '''        new Thread(() -> {\n            try {\n                setupFolders();\n                MainSettingsManager.setOrientationSetting(this, 1);\n                setupFiles();\n                cleanUp();\n                checkLastANR();\n            } catch (Throwable t) {\n                Log.e(TAG, "Non-fatal startup initialization failure", t);\n            }\n            runOnUiThread(() -> {\n                try {\n                    finishSplash();\n                } catch (Throwable t) {\n                    Log.e(TAG, "Setup routing failed; opening VM home", t);\n                    try { startActivity(new Intent(this, MainActivity.class)); } catch (Throwable ignored) {}\n                    finish();\n                }\n            });\n        }).start();\n'''
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          # Branding and Pixel 1 defaults.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
           s = s.replace('<string name="app_name">Vectras VM</string>', '<string name="app_name">Pixel 1 Emulator</string>')
+          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.2 · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
           p.write_text(s)
 
           p = Path('app/src/main/java/com/vectras/qemu/Config.java')
-          s = p.read_text()
-          s = s.replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";')
+          s = p.read_text().replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";')
           p.write_text(s)
 
           p = Path('app/src/main/java/com/vectras/qemu/MainSettingsManager.java')
-          s = p.read_text()
-          s = s.replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");')
+          s = p.read_text().replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");')
           p.write_text(s)
 
           p = Path('app/src/main/java/com/vectras/vm/creator/VMCreatorActivity.java')
-          s = p.read_text()
-          s = s.replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile')
-          p.write_text(s)
-
-          p = Path('app/src/main/res/values/strings.xml')
-          s = p.read_text()
-          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.2 · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
+          s = p.read_text().replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile')
           p.write_text(s)
 
           p = Path('settings.gradle')
@@ -110,7 +144,7 @@ jobs:
           PY
 
           cat > PIXEL1_BUILD.txt <<'EOF'
-          Pixel 1 Emulator profile
+          Pixel 1 Emulator v1.0.1 crash-fix
           Codename: sailfish
           Guest target: Android 7.1.2 / API 25
           Display target: 1080 x 1920
@@ -118,7 +152,12 @@ jobs:
           CPU profile: ARM64, quad-core target
           Engine: QEMU/Vectras-derived Android VM engine
 
-          Host APK compiles against Android API 36. That is independent from
+          Startup fixes:
+          - removed Firebase/Crashlytics initialization and runtime SDKs
+          - replaced push-notification hooks with local no-op stubs
+          - hardened splash initialization against non-essential startup failures
+
+          Host APK compiles against Android API 36. This is independent from
           the emulated guest Android version.
 
           This build does not redistribute Google's proprietary Pixel factory image.
@@ -135,23 +174,29 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 
-      - name: Verify APK identity
+      - name: Verify APK identity and Firebase removal
         shell: bash
         run: |
           APK=pixel1vm/app/build/outputs/apk/debug/app-debug.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -20
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          if unzip -p "$APK" classes.dex | strings | grep -q 'FirebaseCrashlytics'; then
+            echo 'Unexpected FirebaseCrashlytics reference remains in main dex' >&2
+            exit 1
+          fi
 
       - name: Rename APK
         shell: bash
         run: |
           mkdir -p out
-          cp pixel1vm/app/build/outputs/apk/debug/app-debug.apk out/Pixel1-Emulator-v1.0-debug.apk
+          cp pixel1vm/app/build/outputs/apk/debug/app-debug.apk out/Pixel1-Emulator-v1.0.1-crashfix.apk
           cp pixel1vm/PIXEL1_BUILD.txt out/PIXEL1_BUILD.txt
+          sha256sum out/Pixel1-Emulator-v1.0.1-crashfix.apk > out/SHA256.txt
 
       - name: Upload Pixel 1 Emulator
         uses: actions/upload-artifact@v4
         with:
-          name: Pixel1-Emulator-APK
+          name: Pixel1-Emulator-APK-crashfix
           path: out/*
           if-no-files-found: error
