@@ -1,0 +1,241 @@
+name: Pixel 1 Emulator v1.0.2
+
+on:
+  push:
+    branches: [pixel1-emulator-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build components
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platform-tools' \
+            'platforms;android-36' \
+            'build-tools;36.0.0' \
+            'cmake;3.22.1' \
+            'ndk;27.3.13750724'
+
+      - name: Ensure debug signing key exists
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Fetch VM engine
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/xoureldeen/Vectras-VM-Android.git pixel1vm
+
+      - name: Convert Vectras into Pixel 1 Emulator v1.0.2
+        shell: bash
+        run: |
+          cd pixel1vm
+          python3 - <<'PY'
+          from pathlib import Path
+
+          APP_ID = 'com.vaan.pixelonevm2'
+
+          # Host identity and Android-16-compatible dependency line.
+          p = Path('app/build.gradle')
+          s = p.read_text()
+          s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services removed")
+          s = s.replace("id 'com.google.firebase.crashlytics'", "// PixelOne: crashlytics removed")
+          s = s.replace('applicationId "com.vectras.vm"', f'applicationId "{APP_ID}"')
+          s = s.replace('versionCode 156', 'versionCode 157')
+          s = s.replace('versionName "4.4.9"', 'versionName "1.0.2-pixel1-loaderfix"')
+          s = s.replace('compileSdk = 37', 'compileSdk = 36')
+          s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
+          for dep in [
+              '    implementation platform(libs.firebase.bom)\n',
+              '    implementation libs.firebase.analytics\n',
+              '    implementation libs.firebase.crashlytics\n',
+              '    implementation libs.firebase.messaging\n',
+          ]:
+              s = s.replace(dep, '')
+          p.write_text(s)
+
+          for gradle in Path('.').rglob('build.gradle'):
+              text = gradle.read_text(errors='ignore')
+              new = text.replace('compileSdkVersion 37', 'compileSdkVersion 36')
+              new = new.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
+              if new != text:
+                  gradle.write_text(new)
+
+          p = Path('gradle/libs.versions.toml')
+          s = p.read_text()
+          s = s.replace('coreKtx = "1.19.0"', 'coreKtx = "1.17.0"')
+          s = s.replace('glide = "5.0.9"', 'glide = "5.0.7"')
+          p.write_text(s)
+
+          p = Path('gradle/wrapper/gradle-wrapper.properties')
+          s = p.read_text().replace(
+              'bbaeb2fef8710818cf0e261201dab964c572f92b942812df0c3620d62a529a01',
+              '9c0f7faeeb306cb14e4279a3e084ca6b596894089a0638e68a07c945a32c9e14'
+          )
+          p.write_text(s)
+
+          # Offline startup: remove Firebase initialization and messaging hooks.
+          p = Path('app/src/main/java/com/vectras/vm/VectrasApp.java')
+          s = p.read_text()
+          s = s.replace('import com.google.firebase.analytics.FirebaseAnalytics;\n', '')
+          s = s.replace('import com.google.firebase.crashlytics.FirebaseCrashlytics;\n', '')
+          s = s.replace('import com.vectras.vm.utils.GmsChecker;\n', '')
+          firebase_block = '''        FirebaseCrashlytics.getInstance().log("App started: " + AppConfig.vectrasVersion);\n\n        if (GmsChecker.isAvailable(this)) {\n            AppConfig.isGmsAvailable = true;\n            FirebaseAnalytics.getInstance(this).logEvent(FirebaseAnalytics.Event.APP_OPEN, null);\n        } else {\n            FirebaseCrashlytics.getInstance().log("Device does not support GMS.");\n        }\n'''
+          s = s.replace(firebase_block, '        // PixelOne: offline startup; no Firebase initialization.\n')
+          p.write_text(s)
+
+          Path('app/src/main/java/com/vectras/vm/fcm/FCMManager.java').write_text('''package com.vectras.vm.fcm;\n\npublic final class FCMManager {\n    private FCMManager() {}\n    public static void subscribe() {}\n    public static void unSubscribe() {}\n}\n''')
+          Path('app/src/main/java/com/vectras/vm/fcm/FCMService.java').write_text('''package com.vectras.vm.fcm;\n\nimport android.app.Service;\nimport android.content.Intent;\nimport android.os.IBinder;\nimport androidx.annotation.Nullable;\n\npublic class FCMService extends Service {\n    @Nullable @Override public IBinder onBind(Intent intent) { return null; }\n}\n''')
+
+          # Harden splash routing so optional initialization cannot kill launch.
+          p = Path('app/src/main/java/com/vectras/vm/SplashActivity.java')
+          s = p.read_text()
+          old = '''        new Thread(() -> {\n            setupFolders();\n            MainSettingsManager.setOrientationSetting(this, 1);\n            setupFiles();\n            cleanUp();\n            checkLastANR();\n            runOnUiThread(this::finishSplash);\n        }).start();\n'''
+          new = '''        new Thread(() -> {\n            try {\n                setupFolders();\n                MainSettingsManager.setOrientationSetting(this, 1);\n                setupFiles();\n                cleanUp();\n                checkLastANR();\n            } catch (Throwable t) {\n                Log.e(TAG, "Non-fatal startup initialization failure", t);\n            }\n            runOnUiThread(() -> {\n                try { finishSplash(); }\n                catch (Throwable t) {\n                    Log.e(TAG, "Setup routing failed; opening VM home", t);\n                    try { startActivity(new Intent(this, MainActivity.class)); } catch (Throwable ignored) {}\n                    finish();\n                }\n            });\n        }).start();\n'''
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          # Android 16 storage: use app-specific external storage, which needs no
+          # legacy WRITE_EXTERNAL_STORAGE permission.
+          p = Path('app/src/main/java/com/vectras/vm/utils/FileUtils.java')
+          s = p.read_text()
+          old = '''    @NonNull\n    public static File getExternalFilesDirectory(Context context) {\n        return new File(Environment.getExternalStorageDirectory(), "Documents/VectrasVM");\n    }\n'''
+          new = '''    @NonNull\n    public static File getExternalFilesDirectory(Context context) {\n        File dir = context.getExternalFilesDir("Pixel1VM");\n        return dir != null ? dir : context.getFilesDir();\n    }\n'''
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          p = Path('app/src/main/java/com/vectras/vm/utils/PermissionUtils.java')
+          s = p.read_text()
+          s = s.replace('    public static boolean storagepermission(Activity activity, boolean request) {\n',
+                        '    public static boolean storagepermission(Activity activity, boolean request) {\n        if (android.os.Build.VERSION.SDK_INT >= 29) return true;\n')
+          s = s.replace('    public static void requestStoragePermission(Activity activity) {\n',
+                        '    public static void requestStoragePermission(Activity activity) {\n        if (android.os.Build.VERSION.SDK_INT >= 29) return;\n')
+          p.write_text(s)
+
+          # Fix the misleading loader permission failure. Upstream references
+          # bootstrap/loader.apk but does not ship that asset. This runtime path now
+          # verifies copy success and uses chmod(0444) on Android 14+.
+          p = Path('app/src/main/java/com/vectras/vm/setupwizard/SetupFeatureCore.java')
+          s = p.read_text()
+          start = s.index('    public static boolean extractX11LoaderApk(Context context) {')
+          marker = '\n    }\n}'
+          end = s.index(marker, start) + len('\n    }')
+          replacement = '''    public static boolean extractX11LoaderApk(Context context) {\n        File loaderFile = new File(TermuxService.PREFIX_PATH + "/libexec/termux-x11/loader.apk");\n\n        if (loaderFile.exists() && (SDK_INT < 34 || !loaderFile.canWrite())) return true;\n\n        if (loaderFile.exists() && !loaderFile.delete()) {\n            lastErrorLog = "Deleting stale loader.apk failed.";\n            return false;\n        }\n\n        if (!FileUtils.createDirectory(loaderFile.getParent())) {\n            lastErrorLog = "Creating directory for loader.apk failed.";\n            return false;\n        }\n\n        if (!SetupFeatureCore.copyAssetToFile(context, "bootstrap/loader.apk", loaderFile.getAbsolutePath())) {\n            lastErrorLog = "Embedded loader.apk could not be copied: " + lastErrorLog;\n            return false;\n        }\n\n        if (SDK_INT >= 34) {\n            try {\n                android.system.Os.chmod(loaderFile.getAbsolutePath(), 0444);\n            } catch (android.system.ErrnoException e) {\n                if (!loaderFile.setWritable(false, false)) {\n                    lastErrorLog = "Unable to make loader.apk read-only: " + e;\n                    return false;\n                }\n            }\n        }\n\n        if (!loaderFile.exists()) {\n            lastErrorLog = "loader.apk was not created.";\n            return false;\n        }\n        if (SDK_INT >= 34 && loaderFile.canWrite()) {\n            lastErrorLog = "loader.apk remained writable after chmod.";\n            return false;\n        }\n        return true;\n    }'''
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s)
+
+          # Build the loader for the renamed installed package. Java namespaces stay
+          # com.vectras.vm so CmdEntryPoint remains valid.
+          p = Path('shell-loader/build.gradle')
+          s = p.read_text()
+          s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
+          s = s.replace('android.defaultConfig.minSdkVersion 21',
+                        'android.defaultConfig.minSdkVersion 21\nandroid.defaultConfig.applicationId "' + APP_ID + '"')
+          p.write_text(s)
+
+          # Pixel 1 defaults and branding.
+          p = Path('app/src/main/res/values/strings.xml')
+          s = p.read_text()
+          s = s.replace('<string name="app_name">Vectras VM</string>', '<string name="app_name">Pixel 1 Emulator</string>')
+          s = s.replace('</resources>', '\n    <string name="pixel_one_profile" translatable="false">Pixel 1 · sailfish · Android 7.1.2 · 1080×1920 · 4 GB RAM · ARM64</string>\n</resources>')
+          p.write_text(s)
+
+          p = Path('app/src/main/java/com/vectras/qemu/Config.java')
+          p.write_text(p.read_text().replace('public static final String APP_NAME = "Vectras Emulator";', 'public static final String APP_NAME = "Pixel 1 Emulator";'))
+
+          p = Path('app/src/main/java/com/vectras/qemu/MainSettingsManager.java')
+          p.write_text(p.read_text().replace('return prefs.getString("vmArch", "X86_64");', 'return prefs.getString("vmArch", "ARM64");'))
+
+          p = Path('app/src/main/java/com/vectras/vm/creator/VMCreatorActivity.java')
+          p.write_text(p.read_text().replace('current.memory = 512;', 'current.memory = 4096; // Pixel 1 profile'))
+
+          p = Path('settings.gradle')
+          p.write_text(p.read_text().replace('rootProject.name = "Vectras VM"', 'rootProject.name = "Pixel 1 Emulator"'))
+          PY
+
+      - name: Build and embed X11 loader
+        shell: bash
+        run: |
+          cd pixel1vm
+          chmod +x gradlew
+          ./gradlew --no-daemon :shell-loader:assembleDebug
+          LOADER="$(find shell-loader/build/outputs/apk -type f -name loader.apk | head -1)"
+          test -n "$LOADER"
+          test -f "$LOADER"
+          mkdir -p app/src/main/assets/bootstrap
+          cp "$LOADER" app/src/main/assets/bootstrap/loader.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$LOADER" | grep "package: name='com.vaan.pixelonevm2'"
+
+      - name: Build main APK
+        shell: bash
+        run: |
+          cd pixel1vm
+          ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Verify packaged loader and APK identity
+        shell: bash
+        run: |
+          APK=pixel1vm/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep "package: name='com.vaan.pixelonevm2'"
+          unzip -l "$APK" | grep -q 'assets/bootstrap/loader.apk'
+          unzip -l "$APK" | grep -q 'lib/arm64-v8a/'
+          unzip -p "$APK" assets/bootstrap/loader.apk > /tmp/embedded-loader.apk
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging /tmp/embedded-loader.apk | grep "package: name='com.vaan.pixelonevm2'"
+          if unzip -p "$APK" classes.dex | strings | grep -q 'FirebaseCrashlytics'; then
+            echo 'Unexpected FirebaseCrashlytics reference remains in main dex' >&2
+            exit 1
+          fi
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          mkdir -p out
+          cp pixel1vm/app/build/outputs/apk/debug/app-debug.apk out/Pixel1-Emulator-v1.0.2-loaderfix.apk
+          sha256sum out/Pixel1-Emulator-v1.0.2-loaderfix.apk > out/SHA256.txt
+          cat > out/BUILD_NOTES.txt <<'EOF'
+          Pixel 1 Emulator v1.0.2
+          Package: com.vaan.pixelonevm2
+          Fixes: embedded X11 loader.apk, Android 14-16 read-only loader handling,
+          app-specific storage, legacy storage permission bypass, Firebase-free startup.
+          Guest profile target: Pixel 1 / sailfish / Android 7.1.2 / ARM64 / 4 GB RAM.
+          EOF
+
+      - name: Upload Pixel 1 Emulator v1.0.2
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pixel1-Emulator-v1.0.2-loaderfix
+          path: out/*
+          if-no-files-found: error
