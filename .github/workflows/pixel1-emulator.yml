@@ -49,7 +49,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Host app identity and stable Android 16 build target.
           p = Path('app/build.gradle')
           s = p.read_text()
           s = s.replace("id 'com.google.gms.google-services'", "// PixelOne: google-services removed")
@@ -58,10 +57,6 @@ jobs:
           s = s.replace('versionName "4.4.9"', 'versionName "1.0.1-pixel1-fixed"')
           s = s.replace('compileSdk = 37', 'compileSdk = 36')
           s = s.replace("buildToolsVersion '36.1.0'", "buildToolsVersion '36.0.0'")
-
-          # Remove Firebase runtime SDKs entirely. The previous build removed the
-          # Gradle plugins but still executed Crashlytics from Application.onCreate,
-          # which can terminate the process before the first Activity is visible.
           for dep in [
               '    implementation platform(libs.firebase.bom)\n',
               '    implementation libs.firebase.analytics\n',
@@ -71,21 +66,18 @@ jobs:
               s = s.replace(dep, '')
           p.write_text(s)
 
-          # Keep all local Android modules on API 36.
           for gradle in Path('.').rglob('build.gradle'):
               text = gradle.read_text(errors='ignore')
               new = text.replace('compileSdkVersion 37', 'compileSdkVersion 36')
               if new != text:
                   gradle.write_text(new)
 
-          # API-36-compatible dependency line.
           p = Path('gradle/libs.versions.toml')
           s = p.read_text()
           s = s.replace('coreKtx = "1.19.0"', 'coreKtx = "1.17.0"')
           s = s.replace('glide = "5.0.9"', 'glide = "5.0.7"')
           p.write_text(s)
 
-          # Correct upstream Gradle wrapper checksum.
           p = Path('gradle/wrapper/gradle-wrapper.properties')
           s = p.read_text()
           s = s.replace(
@@ -94,7 +86,6 @@ jobs:
           )
           p.write_text(s)
 
-          # Strip Firebase calls from Application startup.
           p = Path('app/src/main/java/com/vectras/vm/VectrasApp.java')
           s = p.read_text()
           s = s.replace('import com.google.firebase.analytics.FirebaseAnalytics;\n', '')
@@ -104,14 +95,10 @@ jobs:
           s = s.replace(firebase_block, '        // PixelOne: offline startup; no Firebase initialization.\n')
           p.write_text(s)
 
-          # Preserve the FCM API surface used by settings/MainActivity, but make it
-          # a local no-op so no Firebase Messaging provider is required at runtime.
-          Path('app/src/main/java/com/vectras/vm/fcm/FCMManager.java').write_text('''package com.vectras.vm.fcm;\n\npublic final class FCMManager {\n    private FCMManager() {}\n    public static void subscribe() {}\n    public static void unsubscribe() {}\n}\n''')
+          Path('app/src/main/java/com/vectras/vm/fcm/FCMManager.java').write_text('''package com.vectras.vm.fcm;\n\npublic final class FCMManager {\n    private FCMManager() {}\n    public static void subscribe() {}\n    public static void unSubscribe() {}\n}\n''')
 
           Path('app/src/main/java/com/vectras/vm/fcm/FCMService.java').write_text('''package com.vectras.vm.fcm;\n\nimport android.app.Service;\nimport android.content.Intent;\nimport android.os.IBinder;\nimport androidx.annotation.Nullable;\n\npublic class FCMService extends Service {\n    @Nullable\n    @Override\n    public IBinder onBind(Intent intent) { return null; }\n}\n''')
 
-          # Harden splash initialization so a non-essential folder/cleanup failure
-          # cannot take the whole process down on newer Android releases.
           p = Path('app/src/main/java/com/vectras/vm/SplashActivity.java')
           s = p.read_text()
           old = '''        new Thread(() -> {\n            setupFolders();\n            MainSettingsManager.setOrientationSetting(this, 1);\n            setupFiles();\n            cleanUp();\n            checkLastANR();\n            runOnUiThread(this::finishSplash);\n        }).start();\n'''
@@ -119,7 +106,6 @@ jobs:
           s = s.replace(old, new)
           p.write_text(s)
 
-          # Branding and Pixel 1 defaults.
           p = Path('app/src/main/res/values/strings.xml')
           s = p.read_text()
           s = s.replace('<string name="app_name">Vectras VM</string>', '<string name="app_name">Pixel 1 Emulator</string>')
