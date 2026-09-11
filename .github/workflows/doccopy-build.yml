@@ -1,4 +1,4 @@
-name: Build Doc Copy Omega APK
+name: Build Doc Copy + Reader APK
 
 on:
   workflow_dispatch:
@@ -15,6 +15,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Add simple reader screen to MainActivity
+        run: |
+          cat doccopy/build_support/reader_main_v12.patch.part1 \
+              doccopy/build_support/reader_main_v12.patch.part2 \
+              doccopy/build_support/reader_main_v12.patch.part3 \
+              doccopy/build_support/reader_main_v12.patch.part4 \
+              doccopy/build_support/reader_main_v12.patch.part5 > /tmp/reader_main_v12.patch
+          patch -p1 < /tmp/reader_main_v12.patch
+          grep -q 'AUDIOBOOK READER' doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
 
       - name: Java 17
         uses: actions/setup-java@v4
@@ -38,11 +48,11 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp doccopy/app/build/outputs/apk/debug/app-debug.apk DocCopyOmega-v1.1.0.apk
+        run: cp doccopy/app/build/outputs/apk/debug/app-debug.apk DocCopyReader-v1.2.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DocCopyOmega-v1.1.0-APK
-          path: DocCopyOmega-v1.1.0.apk
+          name: DocCopyReader-v1.2.0-APK
+          path: DocCopyReader-v1.2.0.apk
           if-no-files-found: error
