@@ -1,0 +1,100 @@
+--- a/doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
++++ b/doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
+@@ -11,6 +11,8 @@
+ import android.graphics.Color;
+ import android.net.Uri;
+ import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
+ import android.provider.OpenableColumns;
+ import android.text.Html;
+ import android.text.InputType;
+@@ -109,6 +111,15 @@
+     private Button saveButton;
+     private Button shareButton;
+     private Button cancelButton;
++    private Button readerBackButton;
++    private Button readerPlayButton;
++    private Button readerPauseButton;
++    private Button readerForwardButton;
++    private Button readerRestartButton;
++    private Button readerStopButton;
++    private Spinner readerSpeedSpinner;
++    private TextView readerStatusView;
++    private final Handler readerUiHandler = new Handler(Looper.getMainLooper());
+ 
+     private File extractedFile;
+     private String selectedName = "document";
+@@ -130,6 +141,7 @@
+         extractedFile = new File(getFilesDir(), "doccopy_omega_last.txt");
+         buildUi();
+         restoreLastExtraction();
++        readerUiHandler.post(readerUiTick);
+     }
+ 
+     private void buildUi() {
+@@ -140,14 +152,14 @@
+         root.setBackgroundColor(Color.WHITE);
+ 
+         TextView title = new TextView(this);
+-        title.setText("DOC COPY Ω");
++        title.setText("DOC COPY + READER");
+         title.setTextSize(25);
+         title.setTextColor(Color.BLACK);
+         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+         root.addView(title);
+ 
+         TextView sub = new TextView(this);
+-        sub.setText("Whole-document extraction • smart OCR • giant-document copy");
++        sub.setText("Open a document. Copy all of it or have your phone read it like an audiobook.");
+         sub.setTextSize(14);
+         sub.setTextColor(Color.DKGRAY);
+         sub.setPadding(0, dp(3), 0, dp(9));
+@@ -157,24 +169,24 @@
+         topRow.setOrientation(LinearLayout.HORIZONTAL);
+ 
+         Button pick = new Button(this);
+-        pick.setText("SELECT DOCS");
++        pick.setText("OPEN DOCUMENTS");
+         pick.setOnClickListener(v -> pickDocuments());
+         topRow.addView(pick, weighted());
+ 
+         Button advanced = new Button(this);
+-        advanced.setText("ADVANCED");
++        advanced.setText("MORE OPTIONS");
+         advanced.setOnClickListener(v -> advancedBox.setVisibility(
+                 advancedBox.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE));
+         topRow.addView(advanced, weighted());
+         root.addView(topRow, fullWidth());
+ 
+         smartOcrCheck = new CheckBox(this);
+-        smartOcrCheck.setText("Smart OCR for scanned / suspicious PDF pages");
++        smartOcrCheck.setText("Read words from scanned pages too");
+         smartOcrCheck.setChecked(true);
+         root.addView(smartOcrCheck);
+ 
+         cleanCheck = new CheckBox(this);
+-        cleanCheck.setText("Clean soft hyphens + broken line wraps");
++        cleanCheck.setText("Fix broken words and messy line breaks");
+         cleanCheck.setChecked(false);
+         root.addView(cleanCheck);
+ 
+@@ -184,27 +196,27 @@
+         advancedBox.setPadding(dp(8), 0, dp(8), dp(6));
+ 
+         forceOcrCheck = new CheckBox(this);
+-        forceOcrCheck.setText("Force OCR every selected PDF page");
++        forceOcrCheck.setText("Treat every PDF page like a picture (slower, useful for scans)");
+         forceOcrCheck.setChecked(false);
+         advancedBox.addView(forceOcrCheck);
+ 
+-        TextView scriptLabel = smallLabel("OCR script");
++        TextView scriptLabel = smallLabel("Language on scanned pages");
+         advancedBox.addView(scriptLabel);
+         scriptSpinner = new Spinner(this);
+-        String[] scripts = {"Latin", "Chinese", "Japanese", "Korean", "Devanagari"};
++        String[] scripts = {"English / Latin letters", "Chinese", "Japanese", "Korean", "Hindi / Devanagari"};
+         ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                 android.R.layout.simple_spinner_dropdown_item, scripts);
+         scriptSpinner.setAdapter(adapter);
+         advancedBox.addView(scriptSpinner, fullWidth());
