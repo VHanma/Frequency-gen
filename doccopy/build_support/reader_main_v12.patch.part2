@@ -1,0 +1,100 @@
+ 
+         pageRangeEdit = new EditText(this);
+-        pageRangeEdit.setHint("PDF pages: all   or   1-20,25,40-55");
++        pageRangeEdit.setHint("Pages to use: all   or   1-20,25,40-55");
+         pageRangeEdit.setSingleLine(true);
+         pageRangeEdit.setInputType(InputType.TYPE_CLASS_TEXT);
+         advancedBox.addView(pageRangeEdit, fullWidth());
+ 
+         passwordEdit = new EditText(this);
+-        passwordEdit.setHint("PDF password (leave blank if none)");
++        passwordEdit.setHint("PDF password (only if the file has one)");
+         passwordEdit.setSingleLine(true);
+         passwordEdit.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+         advancedBox.addView(passwordEdit, fullWidth());
+@@ -217,7 +229,7 @@
+         root.addView(progressBar, fullWidth());
+ 
+         statusView = new TextView(this);
+-        statusView.setText("Select one document or a whole batch.");
++        statusView.setText("Open one document or several at once.");
+         statusView.setTextSize(13);
+         statusView.setTextColor(Color.DKGRAY);
+         statusView.setPadding(0, dp(6), 0, dp(6));
+@@ -227,11 +239,11 @@
+         actions1.setOrientation(LinearLayout.HORIZONTAL);
+         actions1.setGravity(Gravity.CENTER);
+ 
+-        copyButton = actionButton("COPY ALL");
++        copyButton = actionButton("COPY EVERYTHING");
+         copyButton.setOnClickListener(v -> copyAll());
+         actions1.addView(copyButton, weighted());
+ 
+-        saveButton = actionButton("SAVE TXT");
++        saveButton = actionButton("SAVE TEXT");
+         saveButton.setOnClickListener(v -> saveTxt());
+         actions1.addView(saveButton, weighted());
+ 
+@@ -244,7 +256,7 @@
+         actions2.setOrientation(LinearLayout.HORIZONTAL);
+         actions2.setGravity(Gravity.CENTER);
+ 
+-        chunkButton = actionButton("COPY CHUNK");
++        chunkButton = actionButton("COPY IN PARTS");
+         chunkButton.setOnClickListener(v -> copyNextChunk());
+         actions2.addView(chunkButton, weighted());
+ 
+@@ -257,8 +269,57 @@
+         actions2.addView(cancelButton, weighted());
+         root.addView(actions2, fullWidth());
+ 
++        TextView readerTitle = new TextView(this);
++        readerTitle.setText("AUDIOBOOK READER");
++        readerTitle.setTextSize(17);
++        readerTitle.setTextColor(Color.BLACK);
++        readerTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
++        readerTitle.setPadding(0, dp(10), 0, dp(2));
++        root.addView(readerTitle);
++
++        TextView readerHelp = smallLabel("Uses your phone's reading voice and keeps reading with the screen off.");
++        root.addView(readerHelp);
++
++        LinearLayout readerRow1 = new LinearLayout(this);
++        readerRow1.setOrientation(LinearLayout.HORIZONTAL);
++        readerBackButton = actionButton("BACK");
++        readerBackButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_BACK));
++        readerRow1.addView(readerBackButton, weighted());
++        readerPlayButton = actionButton("READ");
++        readerPlayButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_PLAY));
++        readerRow1.addView(readerPlayButton, weighted());
++        readerPauseButton = actionButton("PAUSE");
++        readerPauseButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_PAUSE));
++        readerRow1.addView(readerPauseButton, weighted());
++        readerForwardButton = actionButton("FORWARD");
++        readerForwardButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_FORWARD));
++        readerRow1.addView(readerForwardButton, weighted());
++        root.addView(readerRow1, fullWidth());
++
++        LinearLayout readerRow2 = new LinearLayout(this);
++        readerRow2.setOrientation(LinearLayout.HORIZONTAL);
++        readerRestartButton = actionButton("START OVER");
++        readerRestartButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_RESTART));
++        readerRow2.addView(readerRestartButton, weighted());
++        readerStopButton = actionButton("STOP");
++        readerStopButton.setOnClickListener(v -> sendReaderAction(ReaderService.ACTION_STOP));
++        readerRow2.addView(readerStopButton, weighted());
++        readerSpeedSpinner = new Spinner(this);
++        String[] speeds = {"0.75× Slow", "1.0× Normal", "1.25×", "1.5× Fast", "2.0× Very fast"};
++        ArrayAdapter<String> speedAdapter = new ArrayAdapter<>(this,
++                android.R.layout.simple_spinner_dropdown_item, speeds);
++        readerSpeedSpinner.setAdapter(speedAdapter);
++        int savedSpeedIndex = getSharedPreferences("omega", MODE_PRIVATE).getInt("reader_speed_index", 1);
++        readerSpeedSpinner.setSelection(Math.max(0, Math.min(speeds.length - 1, savedSpeedIndex)));
++        readerRow2.addView(readerSpeedSpinner, weighted());
++        root.addView(readerRow2, fullWidth());
++
++        readerStatusView = smallLabel("Reader will be ready after you open a document.");
++        readerStatusView.setPadding(0, dp(3), 0, dp(4));
++        root.addView(readerStatusView);
++
+         TextView previewLabel = smallLabel(
