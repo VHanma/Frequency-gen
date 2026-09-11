@@ -1,0 +1,76 @@
++                    .append(" • read normally ").append(pdfNativePages)
++                    .append(" • read from pictures ").append(pdfOcrPages);
++            if (pdfLowConfidencePages > 0) b.append(" • ").append(pdfLowConfidencePages).append(" pages may need checking");
+         }
+         if (extractedFile.length() > DIRECT_CLIPBOARD_UTF8_LIMIT) {
+-            b.append(" • giant-copy mode armed");
++            b.append(" • huge-document safe copy ready");
+         }
+         return b.toString();
+     }
+@@ -1390,6 +1454,57 @@
+         chunkButton.setEnabled(enabled);
+         saveButton.setEnabled(enabled);
+         shareButton.setEnabled(enabled);
++        if (readerBackButton != null) readerBackButton.setEnabled(enabled);
++        if (readerPlayButton != null) readerPlayButton.setEnabled(enabled);
++        if (readerPauseButton != null) readerPauseButton.setEnabled(enabled);
++        if (readerForwardButton != null) readerForwardButton.setEnabled(enabled);
++        if (readerRestartButton != null) readerRestartButton.setEnabled(enabled);
++        if (readerStopButton != null) readerStopButton.setEnabled(enabled);
++        if (readerSpeedSpinner != null) readerSpeedSpinner.setEnabled(enabled);
++    }
++
++    private float selectedReaderSpeed() {
++        int i = readerSpeedSpinner == null ? 1 : readerSpeedSpinner.getSelectedItemPosition();
++        float[] rates = {0.75f, 1.0f, 1.25f, 1.5f, 2.0f};
++        i = Math.max(0, Math.min(rates.length - 1, i));
++        getSharedPreferences("omega", MODE_PRIVATE).edit().putInt("reader_speed_index", i).apply();
++        return rates[i];
++    }
++
++    private void sendReaderAction(String action) {
++        if (!hasExtraction()) {
++            toast("Open a document first");
++            return;
++        }
++        Intent i = new Intent(this, ReaderService.class);
++        i.setAction(action);
++        i.putExtra(ReaderService.EXTRA_SPEED, selectedReaderSpeed());
++        if (ReaderService.ACTION_PLAY.equals(action) || ReaderService.ACTION_RESTART.equals(action)) {
++            androidx.core.content.ContextCompat.startForegroundService(this, i);
++        } else {
++            startService(i);
++        }
++        updateReaderStatus();
++    }
++
++    private final Runnable readerUiTick = new Runnable() {
++        @Override public void run() {
++            updateReaderStatus();
++            readerUiHandler.postDelayed(this, 1000);
++        }
++    };
++
++    private void updateReaderStatus() {
++        if (readerStatusView == null) return;
++        android.content.SharedPreferences p = getSharedPreferences("omega", MODE_PRIVATE);
++        long total = p.getLong("chars", extractedChars);
++        long pos = p.getLong("reader_position", 0);
++        if (total <= 0) {
++            readerStatusView.setText("Reader will be ready after you open a document.");
++            return;
++        }
++        long pct = Math.max(0, Math.min(100, Math.round(pos * 100.0 / total)));
++        readerStatusView.setText("Reading spot: " + pct + "% through the document. READ continues from here.");
+     }
+ 
+     private void checkCancelled() throws CancelledException {
+@@ -1420,6 +1535,7 @@
+ 
+     @Override
+     protected void onDestroy() {
++        readerUiHandler.removeCallbacks(readerUiTick);
+         super.onDestroy();
+         synchronized (this) {
+             for (TextRecognizer r : recognizers.values()) {
