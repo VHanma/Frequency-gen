@@ -1,0 +1,100 @@
+         worker.execute(() -> {
+             try {
+                 String all = readUtf8File(extractedFile);
+@@ -1099,10 +1160,10 @@
+                         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                         cm.setPrimaryClip(ClipData.newPlainText(selectedName + " • full text", all));
+                         chunkCursorChars = 0;
+-                        setBusy(false, "Copied ALL " + formatCount(all.length()) + " characters as text.");
++                        setBusy(false, "Copied the whole document • " + formatCount(all.length()) + " characters.");
+                         toast("Whole document copied");
+                     } catch (Exception e) {
+-                        setBusy(false, "Clipboard rejected direct text. Switching to stream copy…");
++                        setBusy(false, "This document is huge. Switching to safe-copy mode…");
+                         copyAsTextStream();
+                     }
+                 });
+@@ -1114,7 +1175,7 @@
+ 
+     private void copyAsTextStream() {
+         if (!hasExtraction()) return;
+-        setBusy(true, "Preparing giant-document text stream…");
++        setBusy(true, "Copying this huge document safely…");
+         worker.execute(() -> {
+             try {
+                 File stream = new File(getCacheDir(), safeFileBase(selectedName) + "_OMEGA_FULL_TEXT.txt");
+@@ -1131,11 +1192,10 @@
+                         ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                         cm.setPrimaryClip(clip);
+                         chunkCursorChars = 0;
+-                        setBusy(false, "Copied ALL via text stream • " + formatCount(extractedChars) +
+-                                " characters • avoids giant inline clipboard payloads.");
++                        setBusy(false, "Copied the whole huge document safely • " + formatCount(extractedChars) + " characters.");
+                         toast("Whole document stream copied");
+                     } catch (Exception e) {
+-                        setBusy(false, "Stream clipboard was rejected. COPY CHUNK is the compatibility fallback.");
++                        setBusy(false, "Your phone would not take the whole thing at once. Use COPY IN PARTS instead.");
+                     }
+                 });
+             } catch (Exception e) {
+@@ -1149,13 +1209,13 @@
+         final long start = chunkCursorChars;
+         if (start >= extractedChars) chunkCursorChars = 0;
+         final long actualStart = chunkCursorChars;
+-        setBusy(true, "Preparing safe clipboard chunk…");
++        setBusy(true, "Getting the next part ready…");
+         worker.execute(() -> {
+             try {
+                 String chunk = readCharChunk(extractedFile, actualStart, CHUNK_CHARS);
+                 if (chunk.isEmpty()) {
+                     chunkCursorChars = 0;
+-                    runOnUiThread(() -> setBusy(false, "Chunk sequence reset. Tap COPY CHUNK again."));
++                    runOnUiThread(() -> setBusy(false, "Parts restarted. Tap COPY IN PARTS again."));
+                     return;
+                 }
+                 long next = actualStart + chunk.length();
+@@ -1167,8 +1227,7 @@
+                         cm.setPrimaryClip(ClipData.newPlainText(
+                                 selectedName + " • chunk " + chunkNo + "/" + total, chunk));
+                         chunkCursorChars = next >= extractedChars ? 0 : next;
+-                        setBusy(false, "Copied chunk " + chunkNo + "/" + total +
+-                                (chunkCursorChars == 0 ? " • sequence complete" : " • tap again for next"));
++                        setBusy(false, "Copied part " + chunkNo + "/" + total + (chunkCursorChars == 0 ? " • all parts done" : " • tap again for the next part"));
+                     } catch (Exception e) {
+                         setBusy(false, "Chunk copy failed: " + shortError(e));
+                     }
+@@ -1251,30 +1310,35 @@
+                 }
+                 previewView.setText(preview.toString());
+                 setActionsEnabled(true);
+-                statusView.setText("Restored last extraction • " + formatCount(extractedChars) + " characters");
++                statusView.setText("Your last document is still ready • " + formatCount(extractedChars) + " characters");
+             } catch (Exception ignored) { }
+         }
+     }
+ 
+     private void saveLastState() {
+-        getSharedPreferences("omega", MODE_PRIVATE).edit()
++        android.content.SharedPreferences p = getSharedPreferences("omega", MODE_PRIVATE);
++        String oldReaderDoc = p.getString("reader_doc", "");
++        android.content.SharedPreferences.Editor e = p.edit()
+                 .putLong("chars", extractedChars)
+-                .putString("name", selectedName)
+-                .apply();
++                .putString("name", selectedName);
++        if (!selectedName.equals(oldReaderDoc)) {
++            e.putString("reader_doc", selectedName).putLong("reader_position", 0);
++        }
++        e.apply();
+     }
+ 
+     private String buildReport() {
+         StringBuilder b = new StringBuilder();
+         b.append("Ready • ").append(documentsDone).append(documentsDone == 1 ? " document" : " documents")
+-                .append(" • ").append(formatCount(extractedChars)).append(" chars");
++                .append(" • ").append(formatCount(extractedChars)).append(" characters");
+         if (pdfPagesSeen > 0) {
+             b.append(" • PDF pages ").append(pdfPagesSeen)
+-                    .append(" • native ").append(pdfNativePages)
+-                    .append(" • OCR ").append(pdfOcrPages);
+-            if (pdfLowConfidencePages > 0) b.append(" • low-confidence ").append(pdfLowConfidencePages);
