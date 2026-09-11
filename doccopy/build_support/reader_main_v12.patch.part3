@@ -1,0 +1,100 @@
+-                "Preview only. COPY ALL, SAVE and SHARE use the complete extracted text.");
++                "Preview only. COPY EVERYTHING, SAVE and SHARE use the complete extracted text.");
+         previewLabel.setPadding(0, dp(8), 0, dp(3));
+         root.addView(previewLabel);
+ 
+@@ -376,7 +437,7 @@
+ 
+         cancelled = false;
+         resetStats();
+-        setBusy(true, "Preparing " + uris.size() + (uris.size() == 1 ? " document…" : " documents…"));
++        setBusy(true, "Getting " + uris.size() + (uris.size() == 1 ? " document ready…" : " documents ready…"));
+ 
+         worker.execute(() -> {
+             preview.setLength(0);
+@@ -438,22 +499,22 @@
+         if (lower.endsWith(".pdf") || mime.equals("application/pdf")) {
+             extractPdf(uri, out, opt, prefix);
+         } else if (lower.endsWith(".docx") || mime.contains("wordprocessingml")) {
+-            updateStatus(prefix + "Extracting DOCX…");
++            updateStatus(prefix + "Reading Word document…");
+             extractDocx(uri, out, opt.cleanText);
+         } else if (lower.endsWith(".epub") || mime.equals("application/epub+zip")) {
+             extractEpub(uri, out, opt.cleanText, prefix);
+         } else if (lower.endsWith(".html") || lower.endsWith(".htm") || mime.equals("text/html")) {
+-            updateStatus(prefix + "Extracting HTML…");
++            updateStatus(prefix + "Reading web page file…");
+             String html = readTextUri(uri);
+             appendText(out, Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString(), opt.cleanText);
+         } else if (lower.endsWith(".xml") || mime.contains("xml")) {
+-            updateStatus(prefix + "Extracting XML…");
++            updateStatus(prefix + "Reading XML file…");
+             appendText(out, extractGenericXml(readTextUri(uri)), opt.cleanText);
+         } else if (lower.endsWith(".rtf") || mime.contains("rtf")) {
+-            updateStatus(prefix + "Extracting RTF…");
++            updateStatus(prefix + "Reading rich-text file…");
+             appendText(out, parseRtf(readTextUri(uri)), opt.cleanText);
+         } else {
+-            updateStatus(prefix + "Extracting text…");
++            updateStatus(prefix + "Reading text file…");
+             extractPlainText(uri, out, opt.cleanText);
+         }
+     }
+@@ -478,7 +539,7 @@
+                     done++;
+                     pdfPagesSeen++;
+                     updateProgress(done - 1, selectedPages,
+-                            prefix + "PDF page " + page + "/" + pages);
++                            prefix + "Reading PDF page " + page + "/" + pages);
+ 
+                     stripper.setStartPage(page);
+                     stripper.setEndPage(page);
+@@ -493,14 +554,14 @@
+ 
+                     if (shouldOcr) {
+                         updateProgress(done - 1, selectedPages,
+-                                prefix + "Smart OCR page " + page + "/" + pages + " @180 DPI");
++                                prefix + "Reading words from picture on page " + page + "/" + pages);
+                         OcrResult first = ocrPdfPage(renderer, page - 1, 180, opt.script);
+                         OcrResult best = first;
+ 
+                         if (needsOcrRetry(first, nativeText)) {
+                             checkCancelled();
+                             updateProgress(done - 1, selectedPages,
+-                                    prefix + "OCR refine page " + page + "/" + pages + " @260 DPI");
++                                    prefix + "Taking a closer look at page " + page + "/" + pages);
+                             OcrResult second = ocrPdfPage(renderer, page - 1, 260, opt.script);
+                             if (ocrScore(second) > ocrScore(first)) best = second;
+                         }
+@@ -529,7 +590,7 @@
+                     appendText(out, chosen, opt.cleanText);
+                     appendRaw(out, "\n");
+                 }
+-                updateProgress(selectedPages, selectedPages, prefix + "PDF complete");
++                updateProgress(selectedPages, selectedPages, prefix + "PDF finished");
+             }
+         } catch (com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException e) {
+             throw new Exception("PDF password required or incorrect");
+@@ -776,14 +837,14 @@
+                 if (e == null || e.isDirectory()) continue;
+                 i++;
+                 updateProgress(i - 1, ordered.size(),
+-                        prefix + "EPUB section " + i + "/" + ordered.size());
++                        prefix + "Reading book section " + i + "/" + ordered.size());
+                 String html = readZipEntry(zip, e);
+                 String text = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY).toString().trim();
+                 if (text.isEmpty()) continue;
+                 appendRaw(out, "\n\n===== SECTION " + i + " / " + ordered.size() + " =====\n\n");
+                 appendText(out, text, clean);
+             }
+-            updateProgress(ordered.size(), ordered.size(), prefix + "EPUB complete");
++            updateProgress(ordered.size(), ordered.size(), prefix + "Book finished");
+         } finally {
+             temp.delete();
+         }
+@@ -1090,7 +1151,7 @@
+     }
+ 
+     private void copyDirect() {
+-        setBusy(true, "Loading complete document into Android clipboard…");
++        setBusy(true, "Copying the whole document…");
