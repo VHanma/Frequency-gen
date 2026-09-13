@@ -1,0 +1,74 @@
+
+-                        cm.setPrimaryClip(clip);
+-                        chunkCursorChars = 0;
+-                        setBusy(false, "Copied the whole huge document safely • " + formatCount(extractedChars) + " characters.");
+-                        toast("Whole document stream copied");
+-                    } catch (Exception e) {
+-                        setBusy(false, "Your phone would not take the whole thing at once. Use COPY IN PARTS instead.");
+-                    }
++                    chunkButton.setText(chunkCursorChars == 0 ? "COPY IN PARTS" : "NEXT PART");
++                    setBusy(false, "Android would not take it all at once. Part 1/" + total +
++                            " copied using the biggest safe size. All parts are saved so nothing is lost.");
++                    toast("Part 1 copied");
+                 });
+             } catch (Exception e) {
+-                runOnUiThread(() -> setBusy(false, "Stream copy failed: " + shortError(e)));
++                runOnUiThread(() -> setBusy(false, "Safe-copy setup failed: " + shortError(e)));
+             }
+         });
+     }
+ 
++    private void saveClipboardParts(int partChars) throws Exception {
++        File dir = new File(getCacheDir(), "clipboard_parts");
++        if (!dir.exists() && !dir.mkdirs()) return;
++        File[] old = dir.listFiles();
++        if (old != null) for (File f : old) f.delete();
++
++        long offset = 0;
++        int part = 1;
++        int total = (int) Math.max(1, (extractedChars + partChars - 1L) / partChars);
++        while (offset < extractedChars) {
++            String text = readCharChunk(extractedFile, offset, partChars);
++            if (text.isEmpty()) break;
++            File out = new File(dir, String.format(Locale.US, "%s_part_%03d_of_%03d.txt",
++                    safeFileBase(selectedName), part, total));
++            try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(
++                    new FileOutputStream(out), StandardCharsets.UTF_8), 64 * 1024)) {
++                w.write(text);
++            }
++            offset += text.length();
++            part++;
++        }
++    }
++
++    private void copyDirect() {
++        // Kept for older calls. COPY EVERYTHING now verifies the clipboard itself.
++        copyAll();
++    }
++
++    private void copyAsTextStream() {
++        // URI clipboard items looked empty in many receiving apps. Use verified text chunks instead.
++        prepareLargestSafeChunksAndCopyFirst();
++    }
++
+     private void copyNextChunk() {
+         if (!hasExtraction()) return;
+-        final long start = chunkCursorChars;
+-        if (start >= extractedChars) chunkCursorChars = 0;
++        if (chosenChunkChars <= 0) {
++            prepareLargestSafeChunksAndCopyFirst();
++            return;
++        }
++        if (chunkCursorChars >= extractedChars) chunkCursorChars = 0;
+         final long actualStart = chunkCursorChars;
+-        setBusy(true, "Getting the next part ready…");
++        final int partChars = chosenChunkChars;
++        setBusy(true, "Copying the next part…");
+         worker.execute(() -> {
+             try {
+-                String chunk = readCharChunk(extractedFile, actualStart, CHUNK_CHARS);
++                String chunk = readCharChunk(extractedFile, actualStart, partChars);
+                 if (chunk.isEmpty()) {
+                     chunkCursorChars = 0;
+-                    runOnUiThread(() -> setBusy(false, "Parts restarted. Tap COPY IN PARTS again."));
++      
