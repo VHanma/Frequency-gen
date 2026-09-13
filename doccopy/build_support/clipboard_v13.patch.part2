@@ -1,0 +1,67 @@
+tring text) {
++        final boolean[] ok = {false};
++        final CountDownLatch latch = new CountDownLatch(1);
++        runOnUiThread(() -> {
++            try {
++                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
++                cm.setPrimaryClip(ClipData.newPlainText(label, text));
++                ClipData check = cm.getPrimaryClip();
++                if (check != null && check.getItemCount() > 0) {
++                    CharSequence got = check.getItemAt(0).getText();
++                    ok[0] = got != null && got.length() == text.length();
++                    if (ok[0] && text.length() > 0) {
++                        int probe = Math.min(48, text.length());
++                        ok[0] = text.substring(0, probe).contentEquals(got.subSequence(0, probe));
++                    }
++                }
++            } catch (Throwable ignored) {
++                ok[0] = false;
++            } finally {
++                latch.countDown();
++            }
++        });
++        try {
++            return latch.await(4, TimeUnit.SECONDS) && ok[0];
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++            return false;
++        }
++    }
++
++    private void prepareLargestSafeChunksAndCopyFirst() {
+         if (!hasExtraction()) return;
+-        setBusy(true, "Copying this huge document safely…");
++        runOnUiThread(() -> setBusy(true, "The whole document is too big for one clipboard item. Finding the biggest safe part…"));
+         worker.execute(() -> {
+             try {
+-                File stream = new File(getCacheDir(), safeFileBase(selectedName) + "_OMEGA_FULL_TEXT.txt");
+-                try (InputStream in = new FileInputStream(extractedFile);
+-                     OutputStream out = new BufferedOutputStream(new FileOutputStream(stream))) {
+-                    copyBytes(in, out);
++                int selected = 0;
++                String first = null;
++                for (int size : SAFE_CHUNK_SIZES) {
++                    String candidate = readCharChunk(extractedFile, 0, size);
++                    if (candidate.isEmpty()) break;
++                    if (putClipboardAndVerify(selectedName + " • part 1", candidate)) {
++                        selected = candidate.length();
++                        first = candidate;
++                        break;
++                    }
++                }
++                if (selected <= 0 || first == null) {
++                    runOnUiThread(() -> setBusy(false, "Android blocked clipboard text even in smaller parts. SAVE TEXT still keeps the full document."));
++                    return;
+                 }
+-                Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".files", stream);
+-                ClipDescription desc = new ClipDescription(selectedName + " • full text stream",
+-                        new String[]{"text/plain"});
+-                ClipData clip = new ClipData(desc, new ClipData.Item(uri));
++
++                chosenChunkChars = selected;
++                chunkCursorChars = selected >= extractedChars ? 0 : selected;
++                saveClipboardParts(chosenChunkChars);
++                int total = (int) Math.max(1, (extractedChars + chosenChunkChars - 1L) / chosenChunkChars);
+                 runOnUiThread(() -> {
+-                    try {
+-                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
