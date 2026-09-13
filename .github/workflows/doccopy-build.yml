@@ -26,6 +26,16 @@ jobs:
           patch -p1 < /tmp/reader_main_v12.patch
           grep -q 'AUDIOBOOK READER' doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
 
+      - name: Add verified clipboard fallback
+        run: |
+          cat doccopy/build_support/clipboard_v13.patch.part1 \
+              doccopy/build_support/clipboard_v13.patch.part2 \
+              doccopy/build_support/clipboard_v13.patch.part3 \
+              doccopy/build_support/clipboard_v13.patch.part4 > /tmp/clipboard_v13.patch
+          patch -p1 < /tmp/clipboard_v13.patch
+          grep -q 'SAFE_CHUNK_SIZES' doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
+          grep -q 'putClipboardAndVerify' doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
@@ -48,11 +58,11 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Rename APK
-        run: cp doccopy/app/build/outputs/apk/debug/app-debug.apk DocCopyReader-v1.2.0.apk
+        run: cp doccopy/app/build/outputs/apk/debug/app-debug.apk DocCopyReader-v1.3.0.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DocCopyReader-v1.2.0-APK
-          path: DocCopyReader-v1.2.0.apk
+          name: DocCopyReader-v1.3.0-APK
+          path: DocCopyReader-v1.3.0.apk
           if-no-files-found: error
