@@ -1,0 +1,72 @@
+--- a/doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
++++ b/doccopy/app/src/main/java/com/vaanhanma/doccopy/MainActivity.java
+@@ -92,6 +92,7 @@
+     private static final int PREVIEW_LIMIT = 150_000;
+     private static final int DIRECT_CLIPBOARD_UTF8_LIMIT = 360_000;
+     private static final int CHUNK_CHARS = 160_000;
++    private static final int[] SAFE_CHUNK_SIZES = {450_000, 400_000, 360_000, 320_000, 280_000, 240_000, 200_000, 160_000, 120_000, 80_000};
+ 
+     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+     private final Map<Integer, TextRecognizer> recognizers = new HashMap<>();
+@@ -125,6 +126,7 @@
+     private String selectedName = "document";
+     private long extractedChars = 0;
+     private long chunkCursorChars = 0;
++    private int chosenChunkChars = 0;
+     private final StringBuilder preview = new StringBuilder();
+     private volatile boolean cancelled = false;
+ 
+@@ -1143,97 +1145,176 @@
+ 
+     private void copyAll() {
+         if (!hasExtraction()) return;
+-        if (extractedFile.length() <= DIRECT_CLIPBOARD_UTF8_LIMIT) {
+-            copyDirect();
+-        } else {
+-            copyAsTextStream();
+-        }
+-    }
+-
+-    private void copyDirect() {
+         setBusy(true, "Copying the whole document…");
+         worker.execute(() -> {
+             try {
+-                String all = readUtf8File(extractedFile);
+-                runOnUiThread(() -> {
+-                    try {
+-                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+-                        cm.setPrimaryClip(ClipData.newPlainText(selectedName + " • full text", all));
++                // A normal text clipboard item is the most compatible way to paste.
++                // Avoid the old URI-only clipboard path because many apps show that as an empty clipboard.
++                if (extractedChars <= SAFE_CHUNK_SIZES[0]) {
++                    String all = readUtf8File(extractedFile);
++                    if (putClipboardAndVerify(selectedName + " • full text", all)) {
+                         chunkCursorChars = 0;
+-                        setBusy(false, "Copied the whole document • " + formatCount(all.length()) + " characters.");
+-                        toast("Whole document copied");
+-                    } catch (Exception e) {
+-                        setBusy(false, "This document is huge. Switching to safe-copy mode…");
+-                        copyAsTextStream();
++                        chosenChunkChars = 0;
++                        runOnUiThread(() -> {
++                            chunkButton.setText("COPY IN PARTS");
++                            setBusy(false, "Copied everything • " + formatCount(all.length()) + " characters.");
++                            toast("Whole document copied");
++                        });
++                        return;
+                     }
+-                });
++                }
++                prepareLargestSafeChunksAndCopyFirst();
+             } catch (Exception e) {
+-                runOnUiThread(() -> setBusy(false, "Copy failed: " + shortError(e)));
++                runOnUiThread(() -> {
++                    setBusy(false, "Whole copy did not fit. Making safe parts instead…");
++                    prepareLargestSafeChunksAndCopyFirst();
++                });
+             }
+         });
+     }
+ 
+-    private void copyAsTextStream() {
++    private boolean putClipboardAndVerify(String label, S
