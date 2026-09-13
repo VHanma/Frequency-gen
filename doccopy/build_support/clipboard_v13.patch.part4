@@ -1,0 +1,42 @@
+              runOnUiThread(() -> {
++                        chunkButton.setText("COPY IN PARTS");
++                        setBusy(false, "Parts restarted. Tap COPY IN PARTS to begin again.");
++                    });
+                     return;
+                 }
+                 long next = actualStart + chunk.length();
+-                int chunkNo = (int) (actualStart / CHUNK_CHARS) + 1;
+-                int total = (int) Math.max(1, (extractedChars + CHUNK_CHARS - 1) / CHUNK_CHARS);
++                int chunkNo = (int) (actualStart / partChars) + 1;
++                int total = (int) Math.max(1, (extractedChars + partChars - 1L) / partChars);
++                if (!putClipboardAndVerify(selectedName + " • part " + chunkNo + "/" + total, chunk)) {
++                    // Clipboard conditions can change. Re-measure from the current position instead of lying about success.
++                    chosenChunkChars = 0;
++                    chunkCursorChars = actualStart;
++                    runOnUiThread(() -> {
++                        chunkButton.setText("COPY IN PARTS");
++                        setBusy(false, "That part was rejected. Tap COPY IN PARTS and I’ll measure a smaller safe size.");
++                    });
++                    return;
++                }
++                chunkCursorChars = next >= extractedChars ? 0 : next;
+                 runOnUiThread(() -> {
+-                    try {
+-                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+-                        cm.setPrimaryClip(ClipData.newPlainText(
+-                                selectedName + " • chunk " + chunkNo + "/" + total, chunk));
+-                        chunkCursorChars = next >= extractedChars ? 0 : next;
+-                        setBusy(false, "Copied part " + chunkNo + "/" + total + (chunkCursorChars == 0 ? " • all parts done" : " • tap again for the next part"));
+-                    } catch (Exception e) {
+-                        setBusy(false, "Chunk copy failed: " + shortError(e));
+-                    }
++                    chunkButton.setText(chunkCursorChars == 0 ? "COPY IN PARTS" : "NEXT PART");
++                    setBusy(false, "Copied part " + chunkNo + "/" + total +
++                            (chunkCursorChars == 0 ? " • all parts done" : " • tap NEXT PART for the next one"));
+                 });
+             } catch (Exception e) {
+-                runOnUiThread(() -> setBusy(false, "Chunk read failed: " + shortError(e)));
++                runOnUiThread(() -> setBusy(false, "Part copy failed: " + shortError(e)));
+             }
+         });
+     }
