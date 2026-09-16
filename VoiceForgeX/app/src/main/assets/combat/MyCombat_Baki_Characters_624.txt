@@ -1,0 +1,660 @@
+MyCombat: Baki Character Combat Combos — 624
+Built from the MyCombat combo-list format: short comma-separated training calls, expanded into character-inspired tactical chains.
+These are practical character-inspired combinations, not claims that every exact chain occurred in canon.
+Default stance is orthodox unless a combo explicitly says otherwise.
+
+===== Baki Hanma (39) =====
+001. Feint left jab, slip left, right straight, left hook, right low kick
+002. Pull back, right straight, left hook, right low kick
+003. Level change feint, right uppercut, left hook, right low kick
+004. Left jab, right straight, roll right, left hook, right low kick
+005. Lead teep, right straight, left hook, right low kick
+006. Switch southpaw, right jab, left straight, left hook, right low kick
+007. Slip right, left hook to body, right uppercut, left hook, right low kick
+008. Parry jab with right hand, left jab, right straight, left hook, right low kick
+009. Double left jab, right straight, duck under, left hook, right low kick
+010. Step left, left body jab, right overhand, left hook, right low kick
+011. Catch body kick, right straight, release and angle left, left hook, right low kick
+012. Fake double leg, right uppercut, left hook, right low kick
+013. Left jab, right cross, switch southpaw, right hook, left hook, right low kick
+014. Feint left jab, slip left, right straight, double leg, side control, ground and pound
+015. Pull back, right straight, left hook, double leg, side control, ground and pound
+016. Level change feint, right uppercut, left hook, double leg, side control, ground and pound
+017. Left jab, right straight, roll right, double leg, side control, ground and pound
+018. Lead teep, right straight, left hook, double leg, side control, ground and pound
+019. Switch southpaw, right jab, left straight, double leg, side control, ground and pound
+020. Slip right, left hook to body, right uppercut, double leg, side control, ground and pound
+021. Parry jab with right hand, left jab, right straight, double leg, side control, ground and pound
+022. Double left jab, right straight, duck under, double leg, side control, ground and pound
+023. Step left, left body jab, right overhand, double leg, side control, ground and pound
+024. Catch body kick, right straight, release and angle left, double leg, side control, ground and pound
+025. Fake double leg, right uppercut, left hook, double leg, side control, ground and pound
+026. Left jab, right cross, switch southpaw, right hook, double leg, side control, ground and pound
+027. Feint left jab, slip left, right straight, step back, right high kick
+028. Pull back, right straight, left hook, step back, right high kick
+029. Level change feint, right uppercut, left hook, step back, right high kick
+030. Left jab, right straight, roll right, step back, right high kick
+031. Lead teep, right straight, left hook, step back, right high kick
+032. Switch southpaw, right jab, left straight, step back, right high kick
+033. Slip right, left hook to body, right uppercut, step back, right high kick
+034. Parry jab with right hand, left jab, right straight, step back, right high kick
+035. Double left jab, right straight, duck under, step back, right high kick
+036. Step left, left body jab, right overhand, step back, right high kick
+037. Catch body kick, right straight, release and angle left, step back, right high kick
+038. Fake double leg, right uppercut, left hook, step back, right high kick
+039. Left jab, right cross, switch southpaw, right hook, step back, right high kick
+
+===== Yujiro Hanma (39) =====
+040. Stand relaxed, pull back late, right straight, left hook, right axe kick
+041. Slip outside jab, right cross, left hook, right axe kick
+042. Forearm block, right straight, left body hook, left hook, right axe kick
+043. Catch right hand on left forearm, right uppercut, left hook, right axe kick
+044. Step through jab, right overhand, left hook, right axe kick
+045. Parry left jab, right straight, left uppercut, left hook, right axe kick
+046. Walk through low kick, right straight, left hook, right axe kick
+047. Lean back from cross, right cross, left hook, right axe kick
+048. Shell against flurry, step in, right uppercut, left hook, right axe kick
+049. Right body jab, left hook, right straight, left hook, right axe kick
+050. Smother cross, collar tie, right knee, left hook, right axe kick
+051. Slip left, right body shot, left hook, right axe kick
+052. Bait jab, shoulder roll, right cross, left hook, right axe kick
+053. Stand relaxed, pull back late, right straight, collar tie, right knee, outside trip
+054. Slip outside jab, right cross, left hook, collar tie, right knee, outside trip
+055. Forearm block, right straight, left body hook, collar tie, right knee, outside trip
+056. Catch right hand on left forearm, right uppercut, left hook, collar tie, right knee, outside trip
+057. Step through jab, right overhand, left hook, collar tie, right knee, outside trip
+058. Parry left jab, right straight, left uppercut, collar tie, right knee, outside trip
+059. Walk through low kick, right straight, left hook, collar tie, right knee, outside trip
+060. Lean back from cross, right cross, left hook, collar tie, right knee, outside trip
+061. Shell against flurry, step in, right uppercut, collar tie, right knee, outside trip
+062. Right body jab, left hook, right straight, collar tie, right knee, outside trip
+063. Smother cross, collar tie, right knee, collar tie, right knee, outside trip
+064. Slip left, right body shot, left hook, collar tie, right knee, outside trip
+065. Bait jab, shoulder roll, right cross, collar tie, right knee, outside trip
+066. Stand relaxed, pull back late, right straight, right backhand, left hook, right straight
+067. Slip outside jab, right cross, left hook, right backhand, left hook, right straight
+068. Forearm block, right straight, left body hook, right backhand, left hook, right straight
+069. Catch right hand on left forearm, right uppercut, left hook, right backhand, left hook, right straight
+070. Step through jab, right overhand, left hook, right backhand, left hook, right straight
+071. Parry left jab, right straight, left uppercut, right backhand, left hook, right straight
+072. Walk through low kick, right straight, left hook, right backhand, left hook, right straight
+073. Lean back from cross, right cross, left hook, right backhand, left hook, right straight
+074. Shell against flurry, step in, right uppercut, right backhand, left hook, right straight
+075. Right body jab, left hook, right straight, right backhand, left hook, right straight
+076. Smother cross, collar tie, right knee, right backhand, left hook, right straight
+077. Slip left, right body shot, left hook, right backhand, left hook, right straight
+078. Bait jab, shoulder roll, right cross, right backhand, left hook, right straight
+
+===== Musashi Miyamoto (39) =====
+079. Show lead hand, withdraw it, step outside right, right knife-hand strike, left body kick
+080. Long guard, parry jab, step diagonally left, right knife-hand strike, left body kick
+081. Feint high with left hand, level change, step outside, right knife-hand strike, left body kick
+082. Catch wrist, pivot outside, shoulder check, right knife-hand strike, left body kick
+083. Split guard with both hands, step through center, right knife-hand strike, left body kick
+084. Slip outside cross, post on shoulder, pivot right, right knife-hand strike, left body kick
+085. Lead hand trap, right straight, angle left, right knife-hand strike, left body kick
+086. Double hand parry, step past lead shoulder, turn opponent, right knife-hand strike, left body kick
+087. Hand fight, arm drag, rear body lock, right knife-hand strike, left body kick
+088. Bait entry, sidestep left, right palm strike, right knife-hand strike, left body kick
+089. Parry cross, left hook to body, step outside, right knife-hand strike, left body kick
+090. Frame on chest, pivot off line, right straight, right knife-hand strike, left body kick
+091. Fake retreat, sudden step in, left jab, right knife-hand strike, left body kick
+092. Show lead hand, withdraw it, step outside right, arm drag, outside trip, side control
+093. Long guard, parry jab, step diagonally left, arm drag, outside trip, side control
+094. Feint high with left hand, level change, step outside, arm drag, outside trip, side control
+095. Catch wrist, pivot outside, shoulder check, arm drag, outside trip, side control
+096. Split guard with both hands, step through center, arm drag, outside trip, side control
+097. Slip outside cross, post on shoulder, pivot right, arm drag, outside trip, side control
+098. Lead hand trap, right straight, angle left, arm drag, outside trip, side control
+099. Double hand parry, step past lead shoulder, turn opponent, arm drag, outside trip, side control
+100. Hand fight, arm drag, rear body lock, arm drag, outside trip, side control
+101. Bait entry, sidestep left, right palm strike, arm drag, outside trip, side control
+102. Parry cross, left hook to body, step outside, arm drag, outside trip, side control
+103. Frame on chest, pivot off line, right straight, arm drag, outside trip, side control
+104. Fake retreat, sudden step in, left jab, arm drag, outside trip, side control
+105. Show lead hand, withdraw it, step outside right, right straight, left hook, pivot away
+106. Long guard, parry jab, step diagonally left, right straight, left hook, pivot away
+107. Feint high with left hand, level change, step outside, right straight, left hook, pivot away
+108. Catch wrist, pivot outside, shoulder check, right straight, left hook, pivot away
+109. Split guard with both hands, step through center, right straight, left hook, pivot away
+110. Slip outside cross, post on shoulder, pivot right, right straight, left hook, pivot away
+111. Lead hand trap, right straight, angle left, right straight, left hook, pivot away
+112. Double hand parry, step past lead shoulder, turn opponent, right straight, left hook, pivot away
+113. Hand fight, arm drag, rear body lock, right straight, left hook, pivot away
+114. Bait entry, sidestep left, right palm strike, right straight, left hook, pivot away
+115. Parry cross, left hook to body, step outside, right straight, left hook, pivot away
+116. Frame on chest, pivot off line, right straight, left hook, pivot away
+117. Fake retreat, sudden step in, left jab, right straight, left hook, pivot away
+
+===== Kaioh Retsu (39) =====
+118. Lead hand trap, right straight, left palm strike, right spinning back kick, left hook
+119. Left jab, right straight, left side kick, right spinning back kick, left hook
+120. Parry jab, right palm strike, left hook, right spinning back kick, left hook
+121. Step outside, left body punch, right round kick, right spinning back kick, left hook
+122. Left front kick, right straight, left spinning backfist, right spinning back kick, left hook
+123. Right parry, left straight, right body kick, right spinning back kick, left hook
+124. Low stance step, left jab, right uppercut, right spinning back kick, left hook
+125. Catch wrist, left palm strike, right knee, right spinning back kick, left hook
+126. Left side kick, right cross, left hook, right spinning back kick, left hook
+127. Double palm frame, right straight, left body kick, right spinning back kick, left hook
+128. Slip left, right straight, left spinning back kick, right spinning back kick, left hook
+129. Left jab, right body shot, left high kick, right spinning back kick, left hook
+130. Parry cross, left hook, right side kick, right spinning back kick, left hook
+131. Lead hand trap, right straight, left palm strike, collar tie, right knee, foot sweep
+132. Left jab, right straight, left side kick, collar tie, right knee, foot sweep
+133. Parry jab, right palm strike, left hook, collar tie, right knee, foot sweep
+134. Step outside, left body punch, right round kick, collar tie, right knee, foot sweep
+135. Left front kick, right straight, left spinning backfist, collar tie, right knee, foot sweep
+136. Right parry, left straight, right body kick, collar tie, right knee, foot sweep
+137. Low stance step, left jab, right uppercut, collar tie, right knee, foot sweep
+138. Catch wrist, left palm strike, right knee, collar tie, right knee, foot sweep
+139. Left side kick, right cross, left hook, collar tie, right knee, foot sweep
+140. Double palm frame, right straight, left body kick, collar tie, right knee, foot sweep
+141. Slip left, right straight, left spinning back kick, collar tie, right knee, foot sweep
+142. Left jab, right body shot, left high kick, collar tie, right knee, foot sweep
+143. Parry cross, left hook, right side kick, collar tie, right knee, foot sweep
+144. Lead hand trap, right straight, left palm strike, right straight, left high kick, pivot right
+145. Left jab, right straight, left side kick, right straight, left high kick, pivot right
+146. Parry jab, right palm strike, left hook, right straight, left high kick, pivot right
+147. Step outside, left body punch, right round kick, right straight, left high kick, pivot right
+148. Left front kick, right straight, left spinning backfist, right straight, left high kick, pivot right
+149. Right parry, left straight, right body kick, right straight, left high kick, pivot right
+150. Low stance step, left jab, right uppercut, right straight, left high kick, pivot right
+151. Catch wrist, left palm strike, right knee, right straight, left high kick, pivot right
+152. Left side kick, right cross, left hook, right straight, left high kick, pivot right
+153. Double palm frame, right straight, left body kick, right straight, left high kick, pivot right
+154. Slip left, right straight, left spinning back kick, right straight, left high kick, pivot right
+155. Left jab, right body shot, left high kick, right straight, left high kick, pivot right
+156. Parry cross, left hook, right side kick, right straight, left high kick, pivot right
+
+===== Doppo Orochi (39) =====
+157. Left forearm block, right reverse punch, left hook, right low kick, left reverse punch
+158. Outside block with left arm, right straight, left low kick, right low kick, left reverse punch
+159. Inside block with right arm, left hook, right body kick, right low kick, left reverse punch
+160. Left jab, right reverse punch, left round kick, right low kick, left reverse punch
+161. Step in left jab, right body punch, left hook, right low kick, left reverse punch
+162. Right low kick, left hook, right reverse punch, right low kick, left reverse punch
+163. Parry jab, right straight, left body hook, right low kick, left reverse punch
+164. Check low kick, right cross, left high kick, right low kick, left reverse punch
+165. Double forearm guard, right uppercut, left hook, right low kick, left reverse punch
+166. Left body kick, right straight, left hook, right low kick, left reverse punch
+167. Slip right, left hook, right reverse punch, right low kick, left reverse punch
+168. Catch front kick, right straight, left foot sweep, right low kick, left reverse punch
+169. Left jab, right cross, left axe kick, right low kick, left reverse punch
+170. Left forearm block, right reverse punch, left hook, clinch, right knee, hip throw
+171. Outside block with left arm, right straight, left low kick, clinch, right knee, hip throw
+172. Inside block with right arm, left hook, right body kick, clinch, right knee, hip throw
+173. Left jab, right reverse punch, left round kick, clinch, right knee, hip throw
+174. Step in left jab, right body punch, left hook, clinch, right knee, hip throw
+175. Right low kick, left hook, right reverse punch, clinch, right knee, hip throw
+176. Parry jab, right straight, left body hook, clinch, right knee, hip throw
+177. Check low kick, right cross, left high kick, clinch, right knee, hip throw
+178. Double forearm guard, right uppercut, left hook, clinch, right knee, hip throw
+179. Left body kick, right straight, left hook, clinch, right knee, hip throw
+180. Slip right, left hook, right reverse punch, clinch, right knee, hip throw
+181. Catch front kick, right straight, left foot sweep, clinch, right knee, hip throw
+182. Left jab, right cross, left axe kick, clinch, right knee, hip throw
+183. Left forearm block, right reverse punch, left hook, right high kick, step back
+184. Outside block with left arm, right straight, left low kick, left hook, right high kick, step back
+185. Inside block with right arm, left hook, right body kick, left hook, right high kick, step back
+186. Left jab, right reverse punch, left round kick, left hook, right high kick, step back
+187. Step in left jab, right body punch, left hook, right high kick, step back
+188. Right low kick, left hook, right reverse punch, left hook, right high kick, step back
+189. Parry jab, right straight, left body hook, left hook, right high kick, step back
+190. Check low kick, right cross, left high kick, left hook, right high kick, step back
+191. Double forearm guard, right uppercut, left hook, right high kick, step back
+192. Left body kick, right straight, left hook, right high kick, step back
+193. Slip right, left hook, right reverse punch, left hook, right high kick, step back
+194. Catch front kick, right straight, left foot sweep, left hook, right high kick, step back
+195. Left jab, right cross, left axe kick, left hook, right high kick, step back
+
+===== Gouki Shibukawa (39) =====
+196. Parry jab, catch wrist, pivot outside, foot sweep, knee on belly, straight armbar
+197. Two-on-one wrist control, step across, turn opponent, foot sweep, knee on belly, straight armbar
+198. Collar tie, elbow control, inside step, foot sweep, knee on belly, straight armbar
+199. Catch right wrist, pull forward, foot sweep, knee on belly, straight armbar
+200. Arm drag, step behind, rear waist lock, foot sweep, knee on belly, straight armbar
+201. Overhook right arm, pivot left, hip connection, foot sweep, knee on belly, straight armbar
+202. Underhook left arm, wrist control, outside step, foot sweep, knee on belly, straight armbar
+203. Parry cross, capture elbow, turn shoulders, foot sweep, knee on belly, straight armbar
+204. Hand fight, wrist peel, duck under, foot sweep, knee on belly, straight armbar
+205. Catch kick, lift ankle, step inside, foot sweep, knee on belly, straight armbar
+206. Collar tie, snap down, circle behind, foot sweep, knee on belly, straight armbar
+207. Right wrist control, left elbow post, step across, foot sweep, knee on belly, straight armbar
+208. Bait grab, redirect wrist, pivot under arm, foot sweep, knee on belly, straight armbar
+209. Parry jab, catch wrist, pivot outside, hip throw, side control, arm triangle
+210. Two-on-one wrist control, step across, turn opponent, hip throw, side control, arm triangle
+211. Collar tie, elbow control, inside step, hip throw, side control, arm triangle
+212. Catch right wrist, pull forward, foot sweep, hip throw, side control, arm triangle
+213. Arm drag, step behind, rear waist lock, hip throw, side control, arm triangle
+214. Overhook right arm, pivot left, hip connection, hip throw, side control, arm triangle
+215. Underhook left arm, wrist control, outside step, hip throw, side control, arm triangle
+216. Parry cross, capture elbow, turn shoulders, hip throw, side control, arm triangle
+217. Hand fight, wrist peel, duck under, hip throw, side control, arm triangle
+218. Catch kick, lift ankle, step inside, hip throw, side control, arm triangle
+219. Collar tie, snap down, circle behind, hip throw, side control, arm triangle
+220. Right wrist control, left elbow post, step across, hip throw, side control, arm triangle
+221. Bait grab, redirect wrist, pivot under arm, hip throw, side control, arm triangle
+222. Parry jab, catch wrist, pivot outside, outside trip, mount, wrist lock
+223. Two-on-one wrist control, step across, turn opponent, outside trip, mount, wrist lock
+224. Collar tie, elbow control, inside step, outside trip, mount, wrist lock
+225. Catch right wrist, pull forward, foot sweep, outside trip, mount, wrist lock
+226. Arm drag, step behind, rear waist lock, outside trip, mount, wrist lock
+227. Overhook right arm, pivot left, hip connection, outside trip, mount, wrist lock
+228. Underhook left arm, wrist control, outside step, outside trip, mount, wrist lock
+229. Parry cross, capture elbow, turn shoulders, outside trip, mount, wrist lock
+230. Hand fight, wrist peel, duck under, outside trip, mount, wrist lock
+231. Catch kick, lift ankle, step inside, outside trip, mount, wrist lock
+232. Collar tie, snap down, circle behind, outside trip, mount, wrist lock
+233. Right wrist control, left elbow post, step across, outside trip, mount, wrist lock
+234. Bait grab, redirect wrist, pivot under arm, outside trip, mount, wrist lock
+
+===== Kaoru Hanayama (39) =====
+235. Walk forward behind high guard, left body hook, right straight, left hook, right overhand, walk forward
+236. Absorb jab on forehead, right body shot, left hook, right overhand, walk forward
+237. Shell against cross, step in, right overhand, left hook, right overhand, walk forward
+238. Left jab to chest, right straight, left hook, right overhand, walk forward
+239. Catch forearms together, shove guard open, right straight, left hook, right overhand, walk forward
+240. Step through low kick, left hook to body, right cross, left hook, right overhand, walk forward
+241. Right body jab, left hook, right uppercut, left hook, right overhand, walk forward
+242. Forearm frame, right body hook, left hook, right overhand, walk forward
+243. Walk through flurry, right straight, left body hook, left hook, right overhand, walk forward
+244. Left hook to body, right uppercut, left hook to head, left hook, right overhand, walk forward
+245. Smother jab, collar tie, right short uppercut, left hook, right overhand, walk forward
+246. Right overhand, left body hook, right straight, left hook, right overhand, walk forward
+247. Double forearm shell, left hook, right cross, left hook, right overhand, walk forward
+248. Walk forward behind high guard, left body hook, right straight, body lock, outside trip, top control
+249. Absorb jab on forehead, right body shot, left hook, body lock, outside trip, top control
+250. Shell against cross, step in, right overhand, body lock, outside trip, top control
+251. Left jab to chest, right straight, left hook, body lock, outside trip, top control
+252. Catch forearms together, shove guard open, right straight, body lock, outside trip, top control
+253. Step through low kick, left hook to body, right cross, body lock, outside trip, top control
+254. Right body jab, left hook, right uppercut, body lock, outside trip, top control
+255. Forearm frame, right body hook, left hook, body lock, outside trip, top control
+256. Walk through flurry, right straight, left body hook, body lock, outside trip, top control
+257. Left hook to body, right uppercut, left hook to head, body lock, outside trip, top control
+258. Smother jab, collar tie, right short uppercut, body lock, outside trip, top control
+259. Right overhand, left body hook, right straight, body lock, outside trip, top control
+260. Double forearm shell, left hook, right cross, body lock, outside trip, top control
+261. Walk forward behind high guard, left body hook, right straight, right uppercut, left hook, right straight
+262. Absorb jab on forehead, right body shot, left hook, right uppercut, left hook, right straight
+263. Shell against cross, step in, right overhand, right uppercut, left hook, right straight
+264. Left jab to chest, right straight, left hook, right uppercut, left hook, right straight
+265. Catch forearms together, shove guard open, right straight, right uppercut, left hook, right straight
+266. Step through low kick, left hook to body, right cross, right uppercut, left hook, right straight
+267. Right body jab, left hook, right uppercut, left hook, right straight
+268. Forearm frame, right body hook, left hook, right uppercut, left hook, right straight
+269. Walk through flurry, right straight, left body hook, right uppercut, left hook, right straight
+270. Left hook to body, right uppercut, left hook to head, right uppercut, left hook, right straight
+271. Smother jab, collar tie, right short uppercut, right uppercut, left hook, right straight
+272. Right overhand, left body hook, right straight, right uppercut, left hook, right straight
+273. Double forearm shell, left hook, right cross, right uppercut, left hook, right straight
+
+===== Jack Hanma (39) =====
+274. Long left jab, right straight, left hook, right low kick, left high kick
+275. Double left jab, right uppercut, left hook, right low kick, left high kick
+276. Left jab, right cross, right low kick, left high kick
+277. Right body jab, left hook, right uppercut, right low kick, left high kick
+278. Slip left, right cross, left knee, right low kick, left high kick
+279. Left jab, right straight, collar tie, right low kick, left high kick
+280. Check low kick, right cross, left hook, right low kick, left high kick
+281. Long guard, right uppercut, left hook, right low kick, left high kick
+282. Step back from jab, right straight, left high kick, right low kick, left high kick
+283. Left hook to body, right uppercut, left hook, right low kick, left high kick
+284. Right low kick, left jab, right cross, right low kick, left high kick
+285. Fake jab, right uppercut, left hook, right low kick, left high kick
+286. Parry cross, left hook, right knee, right low kick, left high kick
+287. Long left jab, right straight, left hook, body lock, mat return, ground and pound
+288. Double left jab, right uppercut, left hook, body lock, mat return, ground and pound
+289. Left jab, right cross, right low kick, body lock, mat return, ground and pound
+290. Right body jab, left hook, right uppercut, body lock, mat return, ground and pound
+291. Slip left, right cross, left knee, body lock, mat return, ground and pound
+292. Left jab, right straight, collar tie, body lock, mat return, ground and pound
+293. Check low kick, right cross, left hook, body lock, mat return, ground and pound
+294. Long guard, right uppercut, left hook, body lock, mat return, ground and pound
+295. Step back from jab, right straight, left high kick, body lock, mat return, ground and pound
+296. Left hook to body, right uppercut, left hook, body lock, mat return, ground and pound
+297. Right low kick, left jab, right cross, body lock, mat return, ground and pound
+298. Fake jab, right uppercut, left hook, body lock, mat return, ground and pound
+299. Parry cross, left hook, right knee, body lock, mat return, ground and pound
+300. Long left jab, right straight, left hook, right uppercut, left hook, right knee
+301. Double left jab, right uppercut, left hook, right uppercut, left hook, right knee
+302. Left jab, right cross, right low kick, right uppercut, left hook, right knee
+303. Right body jab, left hook, right uppercut, left hook, right knee
+304. Slip left, right cross, left knee, right uppercut, left hook, right knee
+305. Left jab, right straight, collar tie, right uppercut, left hook, right knee
+306. Check low kick, right cross, left hook, right uppercut, left hook, right knee
+307. Long guard, right uppercut, left hook, right uppercut, left hook, right knee
+308. Step back from jab, right straight, left high kick, right uppercut, left hook, right knee
+309. Left hook to body, right uppercut, left hook, right uppercut, left hook, right knee
+310. Right low kick, left jab, right cross, right uppercut, left hook, right knee
+311. Fake jab, right uppercut, left hook, right uppercut, left hook, right knee
+312. Parry cross, left hook, right knee, right uppercut, left hook, right knee
+
+===== Mohammad Alai Jr (39) =====
+313. Bounce outside, slip left, right straight, right uppercut, left hook, pivot out
+314. Left jab, pull back, right cross, right uppercut, left hook, pivot out
+315. Double left jab, step right, right straight, right uppercut, left hook, pivot out
+316. Slip outside jab, right cross, left hook, right uppercut, left hook, pivot out
+317. Left body jab, right straight, left hook, right uppercut, left hook, pivot out
+318. Shoulder roll, right cross, left hook, right uppercut, left hook, pivot out
+319. Step back from cross, right straight, left check hook, right uppercut, left hook, pivot out
+320. Feint left jab, right straight, left hook, right uppercut, left hook, pivot out
+321. Slip right, left hook to body, right cross, right uppercut, left hook, pivot out
+322. Left jab, right cross, pivot left, right uppercut, left hook, pivot out
+323. Right hand parry, left jab, right straight, right uppercut, left hook, pivot out
+324. Double jab, right cross, left body hook, right uppercut, left hook, pivot out
+325. Pull counter, right straight, left hook, right uppercut, left hook, pivot out
+326. Bounce outside, slip left, right straight, step back, right straight, left check hook
+327. Left jab, pull back, right cross, step back, right straight, left check hook
+328. Double left jab, step right, right straight, step back, right straight, left check hook
+329. Slip outside jab, right cross, left hook, step back, right straight, left check hook
+330. Left body jab, right straight, left hook, step back, right straight, left check hook
+331. Shoulder roll, right cross, left hook, step back, right straight, left check hook
+332. Step back from cross, right straight, left check hook, step back, right straight, left check hook
+333. Feint left jab, right straight, left hook, step back, right straight, left check hook
+334. Slip right, left hook to body, right cross, step back, right straight, left check hook
+335. Left jab, right cross, pivot left, step back, right straight, left check hook
+336. Right hand parry, left jab, right straight, step back, right straight, left check hook
+337. Double jab, right cross, left body hook, step back, right straight, left check hook
+338. Pull counter, right straight, left hook, step back, right straight, left check hook
+339. Bounce outside, slip left, right straight, left body hook, right cross, circle right
+340. Left jab, pull back, right cross, left body hook, right cross, circle right
+341. Double left jab, step right, right straight, left body hook, right cross, circle right
+342. Slip outside jab, right cross, left hook, left body hook, right cross, circle right
+343. Left body jab, right straight, left hook, left body hook, right cross, circle right
+344. Shoulder roll, right cross, left hook, left body hook, right cross, circle right
+345. Step back from cross, right straight, left check hook, left body hook, right cross, circle right
+346. Feint left jab, right straight, left hook, left body hook, right cross, circle right
+347. Slip right, left hook to body, right cross, left body hook, right cross, circle right
+348. Left jab, right cross, pivot left, left body hook, right cross, circle right
+349. Right hand parry, left jab, right straight, left body hook, right cross, circle right
+350. Double jab, right cross, left body hook, right cross, circle right
+351. Pull counter, right straight, left hook, left body hook, right cross, circle right
+
+===== Pickle (39) =====
+352. Low crouch, explosive step in, right overhand, left hook, right knee, forward pressure
+353. Level drop, burst forward, double leg, left hook, right knee, forward pressure
+354. Wide left hook, right straight, body lock, left hook, right knee, forward pressure
+355. Leap forward, right knee, left hook, right knee, forward pressure
+356. Slip low, right body shot, left hook, right knee, forward pressure
+357. Shoulder crash, right uppercut, left hook, right knee, forward pressure
+358. Long step, right straight, left body hook, left hook, right knee, forward pressure
+359. Catch body kick, rush forward, body lock, left hook, right knee, forward pressure
+360. Duck under hook, rear waist lock, mat return, left hook, right knee, forward pressure
+361. Left jab, sudden level change, double leg, left hook, right knee, forward pressure
+362. Right overhand, left hook, outside trip, left hook, right knee, forward pressure
+363. Burst in, collar tie, right knee, left hook, right knee, forward pressure
+364. Low stance, left body hook, right overhand, left hook, right knee, forward pressure
+365. Low crouch, explosive step in, right overhand, double leg, mount, ground and pound
+366. Level drop, burst forward, double leg, mount, ground and pound
+367. Wide left hook, right straight, body lock, double leg, mount, ground and pound
+368. Leap forward, right knee, left hook, double leg, mount, ground and pound
+369. Slip low, right body shot, left hook, double leg, mount, ground and pound
+370. Shoulder crash, right uppercut, left hook, double leg, mount, ground and pound
+371. Long step, right straight, left body hook, double leg, mount, ground and pound
+372. Catch body kick, rush forward, body lock, double leg, mount, ground and pound
+373. Duck under hook, rear waist lock, mat return, double leg, mount, ground and pound
+374. Left jab, sudden level change, double leg, mount, ground and pound
+375. Right overhand, left hook, outside trip, double leg, mount, ground and pound
+376. Burst in, collar tie, right knee, double leg, mount, ground and pound
+377. Low stance, left body hook, right overhand, double leg, mount, ground and pound
+378. Low crouch, explosive step in, right overhand, body lock, lift, mat return
+379. Level drop, burst forward, double leg, body lock, lift, mat return
+380. Wide left hook, right straight, body lock, lift, mat return
+381. Leap forward, right knee, left hook, body lock, lift, mat return
+382. Slip low, right body shot, left hook, body lock, lift, mat return
+383. Shoulder crash, right uppercut, left hook, body lock, lift, mat return
+384. Long step, right straight, left body hook, body lock, lift, mat return
+385. Catch body kick, rush forward, body lock, lift, mat return
+386. Duck under hook, rear waist lock, mat return, body lock, lift, mat return
+387. Left jab, sudden level change, double leg, body lock, lift, mat return
+388. Right overhand, left hook, outside trip, body lock, lift, mat return
+389. Burst in, collar tie, right knee, body lock, lift, mat return
+390. Low stance, left body hook, right overhand, body lock, lift, mat return
+
+===== Katsumi Orochi (39) =====
+391. Fast left jab, right straight, left low kick, right low kick, left high kick
+392. Double jab, right cross, left high kick, right low kick, left high kick
+393. Left front kick, right straight, left hook, right low kick, left high kick
+394. Right low kick, left jab, right cross, right low kick, left high kick, reset stance
+395. Left jab, right uppercut, left round kick, right low kick, left high kick
+396. Step in right straight, left hook, right high kick, right low kick, left high kick
+397. Parry jab, right reverse punch, left body kick, right low kick, left high kick
+398. Left side kick, right cross, left hook, right low kick, left high kick
+399. Feint low kick, left high kick, right straight, right low kick, left high kick
+400. Left jab, right cross, spinning back kick, right low kick, left high kick
+401. Check kick, right straight, left head kick, right low kick, left high kick
+402. Right body kick, left hook, right straight, right low kick, left high kick
+403. Lead teep, right cross, left roundhouse, right low kick, left high kick
+404. Fast left jab, right straight, left low kick, right straight, left hook, spinning back kick
+405. Double jab, right cross, left high kick, right straight, left hook, spinning back kick
+406. Left front kick, right straight, left hook, right straight, left hook, spinning back kick
+407. Right low kick, left jab, right cross, right straight, left hook, spinning back kick
+408. Left jab, right uppercut, left round kick, right straight, left hook, spinning back kick
+409. Step in right straight, left hook, right high kick, right straight, left hook, spinning back kick
+410. Parry jab, right reverse punch, left body kick, right straight, left hook, spinning back kick
+411. Left side kick, right cross, left hook, right straight, left hook, spinning back kick
+412. Feint low kick, left high kick, right straight, left hook, spinning back kick
+413. Left jab, right cross, spinning back kick, right straight, left hook, spinning back kick
+414. Check kick, right straight, left head kick, right straight, left hook, spinning back kick
+415. Right body kick, left hook, right straight, left hook, spinning back kick
+416. Lead teep, right cross, left roundhouse, right straight, left hook, spinning back kick
+417. Fast left jab, right straight, left low kick, clinch, right knee, foot sweep
+418. Double jab, right cross, left high kick, clinch, right knee, foot sweep
+419. Left front kick, right straight, left hook, clinch, right knee, foot sweep
+420. Right low kick, left jab, right cross, clinch, right knee, foot sweep
+421. Left jab, right uppercut, left round kick, clinch, right knee, foot sweep
+422. Step in right straight, left hook, right high kick, clinch, right knee, foot sweep
+423. Parry jab, right reverse punch, left body kick, clinch, right knee, foot sweep
+424. Left side kick, right cross, left hook, clinch, right knee, foot sweep
+425. Feint low kick, left high kick, right straight, clinch, right knee, foot sweep
+426. Left jab, right cross, spinning back kick, clinch, right knee, foot sweep
+427. Check kick, right straight, left head kick, clinch, right knee, foot sweep
+428. Right body kick, left hook, right straight, clinch, right knee, foot sweep
+429. Lead teep, right cross, left roundhouse, clinch, right knee, foot sweep
+
+===== Biscuit Oliva (39) =====
+430. High shell, step forward, right body shot, left hook, right overhand, forward pressure
+431. Absorb jab on guard, left hook to body, right cross, left hook, right overhand, forward pressure
+432. Left jab to chest, right straight, left hook, right overhand, forward pressure
+433. Smother cross, right uppercut, left hook, right overhand, forward pressure
+434. Right body jab, left hook, right overhand, left hook, right overhand, forward pressure
+435. Walk through low kick, right straight, left hook, right overhand, forward pressure
+436. Double forearm guard, right body hook, left uppercut, left hook, right overhand, forward pressure
+437. Catch jab on left glove, right cross, left body hook, left hook, right overhand, forward pressure
+438. Step in behind shell, left hook, right uppercut, left hook, right overhand, forward pressure
+439. Left body hook, right cross, left hook, right overhand, forward pressure
+440. Parry jab, right body shot, left hook, right overhand, forward pressure
+441. Short right uppercut, left hook, right straight, left hook, right overhand, forward pressure
+442. Shoulder bump, left hook to body, right cross, left hook, right overhand, forward pressure
+443. High shell, step forward, right body shot, body lock, outside trip, mount
+444. Absorb jab on guard, left hook to body, right cross, body lock, outside trip, mount
+445. Left jab to chest, right straight, left hook, body lock, outside trip, mount
+446. Smother cross, right uppercut, left hook, body lock, outside trip, mount
+447. Right body jab, left hook, right overhand, body lock, outside trip, mount
+448. Walk through low kick, right straight, left hook, body lock, outside trip, mount
+449. Double forearm guard, right body hook, left uppercut, body lock, outside trip, mount
+450. Catch jab on left glove, right cross, left body hook, body lock, outside trip, mount
+451. Step in behind shell, left hook, right uppercut, body lock, outside trip, mount
+452. Left body hook, right cross, left hook, body lock, outside trip, mount
+453. Parry jab, right body shot, left hook, body lock, outside trip, mount
+454. Short right uppercut, left hook, right straight, body lock, outside trip, mount
+455. Shoulder bump, left hook to body, right cross, body lock, outside trip, mount
+456. High shell, step forward, right body shot, right uppercut, left hook, right straight
+457. Absorb jab on guard, left hook to body, right cross, right uppercut, left hook, right straight
+458. Left jab to chest, right straight, left hook, right uppercut, left hook, right straight, reset stance
+459. Smother cross, right uppercut, left hook, right uppercut, left hook, right straight
+460. Right body jab, left hook, right overhand, right uppercut, left hook, right straight
+461. Walk through low kick, right straight, left hook, right uppercut, left hook, right straight
+462. Double forearm guard, right body hook, left uppercut, right uppercut, left hook, right straight
+463. Catch jab on left glove, right cross, left body hook, right uppercut, left hook, right straight
+464. Step in behind shell, left hook, right uppercut, left hook, right straight
+465. Left body hook, right cross, left hook, right uppercut, left hook, right straight
+466. Parry jab, right body shot, left hook, right uppercut, left hook, right straight
+467. Short right uppercut, left hook, right straight, right uppercut, left hook, right straight
+468. Shoulder bump, left hook to body, right cross, right uppercut, left hook, right straight
+
+===== Izou Motobe (39) =====
+469. Two-on-one wrist control, arm drag, rear body lock, back take, rear naked choke
+470. Parry jab, wrist capture, outside step, back take, rear naked choke
+471. Collar tie, snap down, front headlock, back take, rear naked choke
+472. Underhook left arm, knee tap, side control, back take, rear naked choke
+473. Overhook right arm, hip turn, outside trip, back take, rear naked choke
+474. Catch kick, ankle lift, foot sweep, back take, rear naked choke
+475. Hand fight, duck under, rear waist lock, back take, rear naked choke
+476. Right wrist control, elbow post, arm drag, back take, rear naked choke
+477. Sprawl, crossface, front headlock, back take, rear naked choke
+478. Collar tie, ankle pick, knee on belly, back take, rear naked choke
+479. Parry cross, two-on-one, inside trip, back take, rear naked choke
+480. Underhook, body lock, mat return, back take, rear naked choke
+481. Arm drag, single leg, run the pipe, back take, rear naked choke
+482. Two-on-one wrist control, arm drag, rear body lock, side control, kimura
+483. Parry jab, wrist capture, outside step, side control, kimura
+484. Collar tie, snap down, front headlock, side control, kimura
+485. Underhook left arm, knee tap, side control, kimura
+486. Overhook right arm, hip turn, outside trip, side control, kimura
+487. Catch kick, ankle lift, foot sweep, side control, kimura
+488. Hand fight, duck under, rear waist lock, side control, kimura
+489. Right wrist control, elbow post, arm drag, side control, kimura
+490. Sprawl, crossface, front headlock, side control, kimura
+491. Collar tie, ankle pick, knee on belly, side control, kimura
+492. Parry cross, two-on-one, inside trip, side control, kimura
+493. Underhook, body lock, mat return, side control, kimura
+494. Arm drag, single leg, run the pipe, side control, kimura
+495. Two-on-one wrist control, arm drag, rear body lock, mount, arm triangle
+496. Parry jab, wrist capture, outside step, mount, arm triangle
+497. Collar tie, snap down, front headlock, mount, arm triangle
+498. Underhook left arm, knee tap, side control, mount, arm triangle
+499. Overhook right arm, hip turn, outside trip, mount, arm triangle
+500. Catch kick, ankle lift, foot sweep, mount, arm triangle
+501. Hand fight, duck under, rear waist lock, mount, arm triangle
+502. Right wrist control, elbow post, arm drag, mount, arm triangle
+503. Sprawl, crossface, front headlock, mount, arm triangle
+504. Collar tie, ankle pick, knee on belly, mount, arm triangle
+505. Parry cross, two-on-one, inside trip, mount, arm triangle
+506. Underhook, body lock, mat return, mount, arm triangle
+507. Arm drag, single leg, run the pipe, mount, arm triangle
+
+===== Nomi no Sukune II (39) =====
+508. Sumo step in, double palm shove, collar tie, inside trip, side control, arm triangle
+509. Left palm strike, right palm strike, body lock, inside trip, side control, arm triangle
+510. Underhook both arms, chest pressure, inside trip, side control, arm triangle
+511. Right palm to chest, left collar tie, knee tap, inside trip, side control, arm triangle
+512. Low stance, right underhook, left overhook, inside trip, side control, arm triangle
+513. Double inside ties, drive forward, outside trip, inside trip, side control, arm triangle
+514. Catch body lock, widen base, hip turn, inside trip, side control, arm triangle
+515. Left collar tie, right underhook, foot sweep, inside trip, side control, arm triangle
+516. Palm frame, right body lock, lift attempt, inside trip, side control, arm triangle
+517. Short left palm, right uppercut, body lock, inside trip, side control, arm triangle
+518. Two-on-one arm control, step across, hip toss, inside trip, side control, arm triangle
+519. Shoulder pressure, underhook, knee tap, inside trip, side control, arm triangle
+520. Double collar tie, snap down, rear body lock, inside trip, side control, arm triangle
+521. Sumo step in, double palm shove, collar tie, body lock, lift, mat return
+522. Left palm strike, right palm strike, body lock, lift, mat return
+523. Underhook both arms, chest pressure, inside trip, body lock, lift, mat return
+524. Right palm to chest, left collar tie, knee tap, body lock, lift, mat return
+525. Low stance, right underhook, left overhook, body lock, lift, mat return
+526. Double inside ties, drive forward, outside trip, body lock, lift, mat return
+527. Catch body lock, widen base, hip turn, body lock, lift, mat return
+528. Left collar tie, right underhook, foot sweep, body lock, lift, mat return
+529. Palm frame, right body lock, lift attempt, body lock, lift, mat return
+530. Short left palm, right uppercut, body lock, lift, mat return
+531. Two-on-one arm control, step across, hip toss, body lock, lift, mat return
+532. Shoulder pressure, underhook, knee tap, body lock, lift, mat return
+533. Double collar tie, snap down, rear body lock, body lock, lift, mat return
+534. Sumo step in, double palm shove, collar tie, outside trip, mount, ground and pound
+535. Left palm strike, right palm strike, body lock, outside trip, mount, ground and pound
+536. Underhook both arms, chest pressure, inside trip, outside trip, mount, ground and pound
+537. Right palm to chest, left collar tie, knee tap, outside trip, mount, ground and pound
+538. Low stance, right underhook, left overhook, outside trip, mount, ground and pound
+539. Double inside ties, drive forward, outside trip, mount, ground and pound
+540. Catch body lock, widen base, hip turn, outside trip, mount, ground and pound
+541. Left collar tie, right underhook, foot sweep, outside trip, mount, ground and pound
+542. Palm frame, right body lock, lift attempt, outside trip, mount, ground and pound
+543. Short left palm, right uppercut, body lock, outside trip, mount, ground and pound
+544. Two-on-one arm control, step across, hip toss, outside trip, mount, ground and pound
+545. Shoulder pressure, underhook, knee tap, outside trip, mount, ground and pound
+546. Double collar tie, snap down, rear body lock, outside trip, mount, ground and pound
+
+===== Taima no Kehaya (39) =====
+547. Left teep, right round kick, left hook, right high kick, step out
+548. Right low kick, left high kick, right straight, left hook, right high kick, step out
+549. Left side kick, right cross, left round kick, left hook, right high kick, step out
+550. Feint low kick, right high kick, left hook, right high kick, step out
+551. Lead teep, spinning back kick, right straight, left hook, right high kick, step out
+552. Right body kick, left hook, right high kick, left hook, right high kick, step out
+553. Left front kick, right roundhouse, left side kick, left hook, right high kick, step out
+554. Step back, right side kick, left high kick, left hook, right high kick, step out
+555. Left low kick, right cross, spinning heel kick, left hook, right high kick, step out
+556. Right teep, left hook, right spinning back kick, left hook, right high kick, step out
+557. Left body kick, right hook, left high kick, left hook, right high kick, step out
+558. Right low kick, left jab, right axe kick, left hook, right high kick, step out
+559. Switch step, left round kick, right side kick, left hook, right high kick, step out
+560. Left teep, right round kick, left hook, right straight, left body kick, right low kick
+561. Right low kick, left high kick, right straight, left body kick, right low kick
+562. Left side kick, right cross, left round kick, right straight, left body kick, right low kick
+563. Feint low kick, right high kick, left hook, right straight, left body kick, right low kick
+564. Lead teep, spinning back kick, right straight, left body kick, right low kick
+565. Right body kick, left hook, right high kick, right straight, left body kick, right low kick
+566. Left front kick, right roundhouse, left side kick, right straight, left body kick, right low kick
+567. Step back, right side kick, left high kick, right straight, left body kick, right low kick
+568. Left low kick, right cross, spinning heel kick, right straight, left body kick, right low kick
+569. Right teep, left hook, right spinning back kick, right straight, left body kick, right low kick
+570. Left body kick, right hook, left high kick, right straight, left body kick, right low kick
+571. Right low kick, left jab, right axe kick, right straight, left body kick, right low kick
+572. Switch step, left round kick, right side kick, right straight, left body kick, right low kick
+573. Left teep, right round kick, left hook, spinning back kick, left hook, right roundhouse
+574. Right low kick, left high kick, right straight, spinning back kick, left hook, right roundhouse
+575. Left side kick, right cross, left round kick, spinning back kick, left hook, right roundhouse
+576. Feint low kick, right high kick, left hook, spinning back kick, left hook, right roundhouse
+577. Lead teep, spinning back kick, right straight, spinning back kick, left hook, right roundhouse
+578. Right body kick, left hook, right high kick, spinning back kick, left hook, right roundhouse
+579. Left front kick, right roundhouse, left side kick, spinning back kick, left hook, right roundhouse
+580. Step back, right side kick, left high kick, spinning back kick, left hook, right roundhouse
+581. Left low kick, right cross, spinning heel kick, spinning back kick, left hook, right roundhouse
+582. Right teep, left hook, right spinning back kick, spinning back kick, left hook, right roundhouse
+583. Left body kick, right hook, left high kick, spinning back kick, left hook, right roundhouse
+584. Right low kick, left jab, right axe kick, spinning back kick, left hook, right roundhouse
+585. Switch step, left round kick, right side kick, spinning back kick, left hook, right roundhouse
+
+===== Gaia (39) =====
+586. Low-line feint, slip left, right straight, left hook, right low kick, angle out
+587. Level change feint, left hook, duck under, left hook, right low kick, angle out
+588. Circle right, jab to body, right cross, left hook, right low kick, angle out
+589. Slip outside cross, arm drag, rear body lock, left hook, right low kick, angle out
+590. Fake retreat, sudden right straight, left hook, right low kick, angle out
+591. Parry jab, step outside, right body shot, left hook, right low kick, angle out
+592. Low stance, left jab, right overhand, left hook, right low kick, angle out
+593. Sprawl, front headlock, circle behind, left hook, right low kick, angle out
+594. Inside low kick, right cross, left hook, right low kick, angle out
+595. Catch kick, shove leg across, step behind, left hook, right low kick, angle out
+596. Double jab, level change, single leg, left hook, right low kick, angle out
+597. Collar tie, snap down, right knee, left hook, right low kick, angle out
+598. Step off line, left hook to body, right straight, left hook, right low kick, angle out
+599. Low-line feint, slip left, right straight, rear body lock, mat return, back control
+600. Level change feint, left hook, duck under, rear body lock, mat return, back control
+601. Circle right, jab to body, right cross, rear body lock, mat return, back control
+602. Slip outside cross, arm drag, rear body lock, mat return, back control
+603. Fake retreat, sudden right straight, left hook, rear body lock, mat return, back control
+604. Parry jab, step outside, right body shot, rear body lock, mat return, back control
+605. Low stance, left jab, right overhand, rear body lock, mat return, back control
+606. Sprawl, front headlock, circle behind, rear body lock, mat return, back control
+607. Inside low kick, right cross, left hook, rear body lock, mat return, back control
+608. Catch kick, shove leg across, step behind, rear body lock, mat return, back control
+609. Double jab, level change, single leg, rear body lock, mat return, back control
+610. Collar tie, snap down, right knee, rear body lock, mat return, back control
+611. Step off line, left hook to body, right straight, rear body lock, mat return, back control
+612. Low-line feint, slip left, right straight, single leg, side control, ground and pound
+613. Level change feint, left hook, duck under, single leg, side control, ground and pound
+614. Circle right, jab to body, right cross, single leg, side control, ground and pound
+615. Slip outside cross, arm drag, rear body lock, single leg, side control, ground and pound
+616. Fake retreat, sudden right straight, left hook, single leg, side control, ground and pound
+617. Parry jab, step outside, right body shot, single leg, side control, ground and pound
+618. Low stance, left jab, right overhand, single leg, side control, ground and pound
+619. Sprawl, front headlock, circle behind, single leg, side control, ground and pound
+620. Inside low kick, right cross, left hook, single leg, side control, ground and pound
+621. Catch kick, shove leg across, step behind, single leg, side control, ground and pound
+622. Double jab, level change, single leg, side control, ground and pound
+623. Collar tie, snap down, right knee, single leg, side control, ground and pound
+624. Step off line, left hook to body, right straight, single leg, side control, ground and pound
