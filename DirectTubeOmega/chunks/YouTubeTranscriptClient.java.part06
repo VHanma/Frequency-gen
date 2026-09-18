@@ -1,0 +1,144 @@
+                    long dur = secondsToMs(p.getAttributeValue(null, "dur"));
+                    String text = cleanText(p.nextText());
+                    if (!text.isEmpty()) out.add(new Segment(text, start, dur));
+                } else if ("p".equals(tag)) {
+                    long start = safeLong(p.getAttributeValue(null, "t"));
+                    long dur = safeLong(p.getAttributeValue(null, "d"));
+                    String text = cleanText(p.nextText());
+                    if (!text.isEmpty()) out.add(new Segment(text, start, dur));
+                }
+            }
+            event = p.next();
+        }
+        return out;
+    }
+
+    private static List<Segment> cleanSegments(List<Segment> input) {
+        List<Segment> out = new ArrayList<>();
+        String previous = null;
+        for (Segment s : input) {
+            String text = cleanText(s.text);
+            if (text.isEmpty()) continue;
+            if (previous != null && text.equals(previous)) continue;
+            out.add(new Segment(text, s.startMs, s.durationMs));
+            previous = text;
+        }
+        return out;
+    }
+
+    private static List<Segment> normalizedDurations(List<Segment> src) {
+        List<Segment> out = new ArrayList<>();
+        for (int i = 0; i < src.size(); i++) {
+            Segment s = src.get(i);
+            long dur = s.durationMs;
+            if (dur <= 0 && i + 1 < src.size()) dur = Math.max(1, src.get(i + 1).startMs - s.startMs);
+            if (dur <= 0) dur = 2000;
+            out.add(new Segment(s.text, s.startMs, dur));
+        }
+        return out;
+    }
+
+    private static String[] splitLanguages(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new String[]{"en"};
+        String[] parts = raw.split("[,\\s]+");
+        List<String> clean = new ArrayList<>();
+        for (String p : parts) if (!p.trim().isEmpty()) clean.add(p.trim());
+        return clean.isEmpty() ? new String[]{"en"} : clean.toArray(new String[0]);
+    }
+
+    private static boolean languageMatches(String track, String wanted) {
+        if (track == null || wanted == null) return false;
+        String a = track.toLowerCase(Locale.US);
+        String b = wanted.trim().toLowerCase(Locale.US);
+        return a.equals(b) || a.startsWith(b + "-") || b.startsWith(a + "-");
+    }
+
+    private static String cleanText(String s) {
+        if (s == null) return "";
+        String x = Build.VERSION.SDK_INT >= 24
+                ? Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString()
+                : Html.fromHtml(s).toString();
+        return x.replace('\u00A0', ' ').replace("\r", " ").replace("\n", " ")
+                .replaceAll("\\s{2,}", " ").trim();
+    }
+
+    private static JSONObject extractAssignedJson(String html, String name) {
+        if (html == null) return null;
+        int from = 0;
+        while (true) {
+            int idx = html.indexOf(name, from);
+            if (idx < 0) return null;
+            int brace = html.indexOf('{', idx + name.length());
+            if (brace < 0) return null;
+            String raw = extractBalancedObject(html, brace);
+            if (raw != null) {
+                try { return new JSONObject(raw); } catch (Exception ignored) {}
+            }
+            from = idx + name.length();
+        }
+    }
+
+    private static String extractBalancedObject(String s, int start) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
+        for (int i = start; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (inString) {
+                if (escape) escape = false;
+                else if (c == '\\') escape = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') inString = true;
+            else if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return s.substring(start, i + 1);
+            }
+        }
+        return null;
+    }
+
+    private static String textFromRunsOrSimple(JSONObject obj) {
+        if (obj == null) return "";
+        String simple = obj.optString("simpleText", "");
+        if (!simple.isEmpty()) return simple;
+        JSONArray runs = obj.optJSONArray("runs");
+        if (runs == null) return "";
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < runs.length(); i++) {
+            JSONObject r = runs.optJSONObject(i);
+            if (r != null) b.append(r.optString("text", ""));
+        }
+        return b.toString();
+    }
+
+    private static String firstGroup(Pattern p, String s) {
+        Matcher m = p.matcher(s == null ? "" : s);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private static String enc(String s) throws Exception {
+        return URLEncoder.encode(s == null ? "" : s, "UTF-8");
+    }
+
+    private static long secondsToMs(String s) {
+        try { return Math.round(Double.parseDouble(s) * 1000.0); }
+        catch (Exception e) { return 0; }
+    }
+
+    private static long safeLong(String s) {
+        try { return Long.parseLong(s == null ? "0" : s); }
+        catch (Exception e) { return 0; }
+    }
+
+    public static String shortTime(long ms) {
+        long total = ms / 1000;
+        long h = total / 3600;
+        long m = (total % 3600) / 60;
+        long s = total % 60;
+        return h > 0 ? String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+                : String.format(Locale.US, "%02d:%02d", m, s);
+    }
+
