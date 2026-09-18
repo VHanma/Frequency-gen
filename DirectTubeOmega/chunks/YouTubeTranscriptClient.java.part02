@@ -1,0 +1,126 @@
+                    method = "innertube-android-sdkless";
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (player == null && watch.player != null && !parseTracks(watch.player).isEmpty()) {
+            player = watch.player;
+            method = "watch-page-caption-track";
+        }
+        if (player == null) throw new Exception("No selectable caption tracks were exposed by YouTube.");
+
+        Probe p = new Probe();
+        p.videoId = videoId;
+        p.watch = watch;
+        p.player = player;
+        p.sourceMethod = method;
+        JSONObject vd = player.optJSONObject("videoDetails");
+        if (vd != null) {
+            p.title = vd.optString("title", "");
+            p.author = vd.optString("author", "");
+        }
+        p.tracks.addAll(parseTracks(player));
+        return p;
+    }
+
+    public static Result fetchTrack(Probe p, Track track, String translateTo) throws Exception {
+        if (p == null || track == null || p.watch == null) throw new Exception("Missing transcript track.");
+        TrackChoice choice = new TrackChoice();
+        choice.track = track;
+        if (translateTo != null && !translateTo.trim().isEmpty()
+                && !languageMatches(track.languageCode, translateTo.trim())) {
+            if (!track.translatable) throw new Exception("This track does not support YouTube translation.");
+            choice.translationCode = translateTo.trim();
+            choice.translated = true;
+        }
+        if (track.baseUrl.contains("exp=xpe")) {
+            throw new Exception("This track requires a Player/Subtitle PoToken in this session.");
+        }
+        List<Segment> segs = fetchCaptionUrl(track.baseUrl, choice.translationCode, p.watch.cookie);
+        if (segs.isEmpty()) throw new Exception("The selected caption track returned no transcript text.");
+        Result out = resultFrom(p.videoId, p.player, choice, p.tracks, segs, p.sourceMethod);
+        if (out.title.isEmpty()) out.title = p.title;
+        if (out.author.isEmpty()) out.author = p.author;
+        return out;
+    }
+
+    public static Result fetch(String urlOrId, String preferredLanguages) throws Exception {
+        String videoId = extractVideoId(urlOrId);
+        if (videoId == null) throw new Exception("Could not find an 11-character YouTube video ID.");
+
+        WatchState watch = loadWatchState(videoId);
+        String[] prefs = splitLanguages(preferredLanguages);
+
+        // Route 1: sdkless Android player -> caption track. This gives us explicit
+        // language choice and avoids the web caption PoToken path on many videos.
+        try {
+            Result r = fetchViaAndroidCaptionTrack(videoId, prefs, watch);
+            if (!r.segments.isEmpty()) return r;
+        } catch (Exception ignored) {
+            // Continue to independent routes.
+        }
+
+        // Route 2: YouTube's own transcript panel endpoint. This is independent
+        // of timedtext base URLs and survives cases where web caption URLs are gated.
+        try {
+            Result r = fetchViaTranscriptPanel(videoId, watch);
+            if (!r.segments.isEmpty()) return r;
+        } catch (Exception ignored) {
+            // Continue.
+        }
+
+        // Route 3: caption tracks already embedded in the watch page player response.
+        try {
+            Result r = fetchViaWatchPlayerTracks(videoId, prefs, watch);
+            if (!r.segments.isEmpty()) return r;
+        } catch (Exception ignored) {
+            // Fall through to detailed error below.
+        }
+
+        if (watch.player != null) {
+            JSONObject ps = watch.player.optJSONObject("playabilityStatus");
+            if (ps != null && !"OK".equals(ps.optString("status", "OK"))) {
+                String reason = ps.optString("reason", ps.optString("status", "Unavailable"));
+                throw new Exception("Video is not playable: " + reason);
+            }
+        }
+        throw new Exception("No usable transcript was exposed by YouTube for this video.");
+    }
+
+    public static String extractVideoId(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim();
+        if (ID_ONLY.matcher(s).matches()) return s;
+
+        Matcher m = URL_ID.matcher(s);
+        if (m.find()) return m.group(1);
+
+        Matcher q = Pattern.compile("(?:^|[?&])v=([A-Za-z0-9_-]{11})(?:[&#]|$)").matcher(s);
+        if (q.find()) return q.group(1);
+
+        // Shared text often contains prose + a URL.
+        Matcher loose = Pattern.compile("(?:v=|youtu\\.be/|shorts/)([A-Za-z0-9_-]{11})").matcher(s);
+        if (loose.find()) return loose.group(1);
+        return null;
+    }
+
+    private static final class WatchState {
+        String html;
+        String apiKey;
+        String clientVersion;
+        String visitorData;
+        JSONObject player;
+        JSONObject initialData;
+        String cookie;
+    }
+
+    private static WatchState loadWatchState(String videoId) throws Exception {
+        WatchState w = new WatchState();
+        w.cookie = DEFAULT_COOKIE;
+        HttpResponse r = get(WATCH + videoId + "&hl=en", WEB_UA, w.cookie, null);
+        if (r.code == 429) throw new Exception("YouTube rate-limited this connection (HTTP 429).");
+        if (r.code < 200 || r.code >= 400) throw new Exception("Watch page returned HTTP " + r.code + ".");
+
+        w.html = r.body;
+        w.apiKey = firstGroup(API_KEY, w.html);
+        w.clientVersion = firstGroup(CLIENT_VERSION, w.html);
