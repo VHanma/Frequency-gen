@@ -1,0 +1,82 @@
+    private static String srtTime(long ms) {
+        long h = ms / 3600000, m = (ms % 3600000) / 60000, s = (ms % 60000) / 1000, x = ms % 1000;
+        return String.format(Locale.US, "%02d:%02d:%02d,%03d", h, m, s, x);
+    }
+
+    private static String vttTime(long ms) {
+        long h = ms / 3600000, m = (ms % 3600000) / 60000, s = (ms % 60000) / 1000, x = ms % 1000;
+        return String.format(Locale.US, "%02d:%02d:%02d.%03d", h, m, s, x);
+    }
+
+    private static String csvEscape(String s) {
+        if (s == null) return "\"\"";
+        return "\"" + s.replace("\"", "\"\"") + "\"";
+    }
+
+    private static java.util.Map<String, String> headers(String... kv) {
+        java.util.Map<String, String> m = new java.util.LinkedHashMap<>();
+        for (int i = 0; i + 1 < kv.length; i += 2) m.put(kv[i], kv[i + 1]);
+        return m;
+    }
+
+    private static HttpResponse get(String url, String ua, String cookie, java.util.Map<String, String> extra)
+            throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(25000);
+        c.setInstanceFollowRedirects(true);
+        c.setRequestMethod("GET");
+        c.setRequestProperty("User-Agent", ua);
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+        if (cookie != null) c.setRequestProperty("Cookie", cookie);
+        if (extra != null) for (java.util.Map.Entry<String, String> e : extra.entrySet()) c.setRequestProperty(e.getKey(), e.getValue());
+        return readResponse(c);
+    }
+
+    private static HttpResponse postJson(String url, String json, String ua, String cookie,
+                                         java.util.Map<String, String> extra) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(25000);
+        c.setInstanceFollowRedirects(true);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("User-Agent", ua);
+        c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+        c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        if (cookie != null) c.setRequestProperty("Cookie", cookie);
+        if (extra != null) for (java.util.Map.Entry<String, String> e : extra.entrySet()) c.setRequestProperty(e.getKey(), e.getValue());
+
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+        c.setFixedLengthStreamingMode(body.length);
+        try (OutputStream os = c.getOutputStream()) { os.write(body); }
+        return readResponse(c);
+    }
+
+    private static HttpResponse readResponse(HttpURLConnection c) throws Exception {
+        int code = c.getResponseCode();
+        InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        if (in != null) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            in.close();
+        }
+        byte[] bytes = out.toByteArray();
+        String body = new String(bytes, StandardCharsets.UTF_8);
+        c.disconnect();
+        return new HttpResponse(code, body, bytes);
+    }
+
+    private static final class HttpResponse {
+        final int code;
+        final String body;
+        final byte[] bytes;
+        HttpResponse(int code, String body, byte[] bytes) {
+            this.code = code;
+            this.body = body;
+            this.bytes = bytes;
+        }
+    }
+}
