@@ -1,0 +1,127 @@
+        output.setTextColor(fg);
+        output.setLinkTextColor(Color.rgb(110, 190, 255));
+        output.setTextSize(14);
+        output.setTypeface(Typeface.MONOSPACE);
+        output.setPadding(0, 0, 0, dp(30));
+        output.setMovementMethod(LinkMovementMethod.getInstance());
+
+        outputScroll = new ScrollView(this);
+        outputScroll.addView(output);
+        root.addView(outputScroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        setContentView(root);
+        setResultButtons(false);
+
+        fetch.setOnClickListener(v -> fetchDefault());
+        track.setOnClickListener(v -> chooseTrack());
+        history.setOnClickListener(v -> showHistory());
+        export.setOnClickListener(v -> showExport());
+        copy.setOnClickListener(v -> copyTranscript());
+        share.setOnClickListener(v -> shareTranscript());
+        nextMatch.setOnClickListener(v -> findNext());
+        openVideo.setOnClickListener(v -> openVideoAt(0));
+        clear.setOnClickListener(v -> clearScreen());
+        timestamps.setOnCheckedChangeListener((buttonView, isChecked) -> render());
+    }
+
+    private EditText field(String hint, boolean singleLine) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setHintTextColor(Color.rgb(112, 122, 138));
+        e.setTextColor(Color.WHITE);
+        e.setSingleLine(singleLine);
+        e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        return e;
+    }
+
+    private void acceptIncomingIntent(Intent intent) {
+        if (intent == null) return;
+        String candidate = null;
+        if (Intent.ACTION_SEND.equals(intent.getAction()) && "text/plain".equals(intent.getType())) {
+            candidate = intent.getStringExtra(Intent.EXTRA_TEXT);
+        } else if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            candidate = intent.getDataString();
+        }
+        if (candidate != null && YouTubeTranscriptClient.extractVideoId(candidate) != null) {
+            input.setText(candidate.trim());
+            fetchDefault();
+        }
+    }
+
+    private void fetchDefault() {
+        String raw = input.getText().toString().trim();
+        String langs = languages.getText().toString().trim();
+        if (raw.isEmpty()) {
+            toast("Paste or share a YouTube link.");
+            return;
+        }
+
+        busy("Finding caption tracks…");
+        executor.submit(() -> {
+            try {
+                YouTubeTranscriptClient.Probe p = YouTubeTranscriptClient.probe(raw);
+                YouTubeTranscriptClient.Result r = fetchPreferredFromProbe(p, langs);
+                runOnUiThread(() -> acceptResult(p, r));
+            } catch (Exception e) {
+                runOnUiThread(() -> fail(e));
+            }
+        });
+    }
+
+    private YouTubeTranscriptClient.Result fetchPreferredFromProbe(YouTubeTranscriptClient.Probe p, String preferred) throws Exception {
+        String firstPref = "en";
+        if (preferred != null && !preferred.trim().isEmpty()) {
+            firstPref = preferred.trim().split("[,\\s]+")[0];
+        }
+
+        YouTubeTranscriptClient.Track manualExact = null;
+        YouTubeTranscriptClient.Track autoExact = null;
+        YouTubeTranscriptClient.Track english = null;
+        YouTubeTranscriptClient.Track firstManual = null;
+        YouTubeTranscriptClient.Track first = p.tracks.get(0);
+
+        for (YouTubeTranscriptClient.Track t : p.tracks) {
+            boolean match = t.languageCode.equalsIgnoreCase(firstPref)
+                    || t.languageCode.toLowerCase(Locale.US).startsWith(firstPref.toLowerCase(Locale.US) + "-");
+            if (match && !t.generated && manualExact == null) manualExact = t;
+            if (match && t.generated && autoExact == null) autoExact = t;
+            if (t.languageCode.toLowerCase(Locale.US).startsWith("en") && english == null) english = t;
+            if (!t.generated && firstManual == null) firstManual = t;
+        }
+
+        YouTubeTranscriptClient.Track chosen = manualExact != null ? manualExact
+                : autoExact != null ? autoExact
+                : english != null ? english
+                : firstManual != null ? firstManual : first;
+
+        String translate = null;
+        boolean requestedMatches = chosen.languageCode.equalsIgnoreCase(firstPref)
+                || chosen.languageCode.toLowerCase(Locale.US).startsWith(firstPref.toLowerCase(Locale.US) + "-");
+        if (!requestedMatches && chosen.translatable) translate = firstPref;
+
+        return YouTubeTranscriptClient.fetchTrack(p, chosen, translate);
+    }
+
+    private void chooseTrack() {
+        String raw = input.getText().toString().trim();
+        if (raw.isEmpty() && currentProbe == null) {
+            toast("Paste or share a YouTube link first.");
+            return;
+        }
+
+        if (currentProbe != null && currentProbe.videoId.equals(YouTubeTranscriptClient.extractVideoId(raw))) {
+            showTrackDialog(currentProbe);
+            return;
+        }
+
+        busy("Reading available tracks…");
+        executor.submit(() -> {
+            try {
+                YouTubeTranscriptClient.Probe p = YouTubeTranscriptClient.probe(raw);
+                runOnUiThread(() -> {
+                    currentProbe = p;
+                    setBusy(false);
+                    showTrackDialog(p);
+                });
+            } catch (Exception e) {
