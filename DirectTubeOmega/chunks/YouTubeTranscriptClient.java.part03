@@ -1,0 +1,114 @@
+        w.visitorData = firstGroup(VISITOR_DATA, w.html);
+        w.player = extractAssignedJson(w.html, "ytInitialPlayerResponse");
+        w.initialData = extractAssignedJson(w.html, "ytInitialData");
+
+        if (w.apiKey == null || w.apiKey.isEmpty()) {
+            throw new Exception("YouTube InnerTube key was not present on the watch page.");
+        }
+        if (w.clientVersion == null || w.clientVersion.isEmpty()) {
+            w.clientVersion = "2.20260114.08.00";
+        }
+        return w;
+    }
+
+    private static Result fetchViaAndroidCaptionTrack(String videoId, String[] prefs, WatchState watch)
+            throws Exception {
+        JSONObject client = new JSONObject();
+        client.put("hl", "en");
+        client.put("gl", "US");
+        client.put("clientName", "ANDROID");
+        client.put("clientVersion", ANDROID_CLIENT_VERSION);
+        client.put("osName", "Android");
+        client.put("osVersion", "11");
+        client.put("userAgent", ANDROID_UA);
+        // Do not add androidSdkVersion: this is the sdkless variant.
+
+        JSONObject context = new JSONObject();
+        context.put("client", client);
+
+        JSONObject payload = new JSONObject();
+        payload.put("context", context);
+        payload.put("videoId", videoId);
+        payload.put("contentCheckOk", true);
+        payload.put("racyCheckOk", true);
+
+        HttpResponse r = postJson(
+                YTI + "player?key=" + enc(watch.apiKey) + "&prettyPrint=false",
+                payload.toString(), ANDROID_UA, watch.cookie,
+                headers("X-YouTube-Client-Name", "3", "X-YouTube-Client-Version", ANDROID_CLIENT_VERSION)
+        );
+        if (r.code == 429) throw new Exception("YouTube rate-limited the Android player route.");
+        if (r.code < 200 || r.code >= 300) throw new Exception("Android player route returned HTTP " + r.code + ".");
+
+        JSONObject player = new JSONObject(r.body);
+        List<Track> tracks = parseTracks(player);
+        if (tracks.isEmpty()) throw new Exception("Android player returned no caption tracks.");
+
+        TrackChoice choice = chooseTrack(tracks, prefs);
+        if (choice.track == null) throw new Exception("No caption track matched.");
+
+        List<Segment> segs = fetchCaptionUrl(choice.track.baseUrl, choice.translationCode, watch.cookie);
+        if (segs.isEmpty()) throw new Exception("Android caption track was empty.");
+
+        return resultFrom(videoId, player, choice, tracks, segs, "innertube-android-sdkless");
+    }
+
+    private static Result fetchViaWatchPlayerTracks(String videoId, String[] prefs, WatchState watch)
+            throws Exception {
+        if (watch.player == null) throw new Exception("Watch page had no player response.");
+        List<Track> tracks = parseTracks(watch.player);
+        if (tracks.isEmpty()) throw new Exception("Watch page had no caption tracks.");
+
+        TrackChoice choice = chooseTrack(tracks, prefs);
+        if (choice.track == null) throw new Exception("No caption track matched.");
+        if (choice.track.baseUrl.contains("exp=xpe")) {
+            throw new Exception("Watch-page caption URL requires a PoToken.");
+        }
+
+        List<Segment> segs = fetchCaptionUrl(choice.track.baseUrl, choice.translationCode, watch.cookie);
+        if (segs.isEmpty()) throw new Exception("Watch-page caption track was empty.");
+        return resultFrom(videoId, watch.player, choice, tracks, segs, "watch-page-caption-track");
+    }
+
+    private static Result fetchViaTranscriptPanel(String videoId, WatchState watch) throws Exception {
+        JSONObject context = buildWebContext(watch);
+        String params = findTranscriptParams(watch.initialData);
+
+        if (params == null || params.isEmpty()) {
+            JSONObject nextPayload = new JSONObject();
+            nextPayload.put("context", context);
+            nextPayload.put("videoId", videoId);
+            nextPayload.put("contentCheckOk", true);
+            nextPayload.put("racyCheckOk", true);
+
+            HttpResponse next = postJson(
+                    YTI + "next?key=" + enc(watch.apiKey) + "&prettyPrint=false",
+                    nextPayload.toString(), WEB_UA, watch.cookie, webHeaders(watch)
+            );
+            if (next.code >= 200 && next.code < 300 && next.body.trim().startsWith("{")) {
+                params = findTranscriptParams(new JSONObject(next.body));
+            }
+        }
+
+        if (params == null || params.isEmpty()) throw new Exception("Transcript panel params not found.");
+
+        JSONObject payload = new JSONObject();
+        payload.put("context", context);
+        payload.put("params", params);
+
+        HttpResponse tr = postJson(
+                YTI + "get_transcript?key=" + enc(watch.apiKey) + "&prettyPrint=false",
+                payload.toString(), WEB_UA, watch.cookie, webHeaders(watch)
+        );
+        if (tr.code == 429) throw new Exception("YouTube rate-limited transcript-panel retrieval.");
+        if (tr.code < 200 || tr.code >= 300) throw new Exception("Transcript panel returned HTTP " + tr.code + ".");
+
+        JSONObject root = new JSONObject(tr.body);
+        List<Segment> segs = parseTranscriptPanelSegments(root);
+        if (segs.isEmpty()) throw new Exception("Transcript panel returned no segments.");
+
+        Result out = new Result();
+        out.videoId = videoId;
+        fillMetadata(out, watch.player);
+        out.languageCode = "panel";
+        out.languageName = "YouTube transcript panel";
