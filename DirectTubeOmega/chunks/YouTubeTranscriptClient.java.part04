@@ -1,0 +1,130 @@
+        out.generated = false;
+        out.translated = false;
+        out.sourceMethod = "innertube-get-transcript";
+        out.segments.addAll(cleanSegments(segs));
+        return out;
+    }
+
+    private static JSONObject buildWebContext(WatchState watch) throws Exception {
+        JSONObject client = new JSONObject();
+        client.put("hl", "en");
+        client.put("gl", "US");
+        client.put("clientName", "WEB");
+        client.put("clientVersion", watch.clientVersion);
+        client.put("userAgent", WEB_UA);
+        if (watch.visitorData != null && !watch.visitorData.isEmpty()) {
+            client.put("visitorData", watch.visitorData);
+        }
+
+        JSONObject context = new JSONObject();
+        context.put("client", client);
+        JSONObject user = new JSONObject();
+        user.put("lockedSafetyMode", false);
+        context.put("user", user);
+        JSONObject request = new JSONObject();
+        request.put("useSsl", true);
+        context.put("request", request);
+        return context;
+    }
+
+    private static java.util.Map<String, String> webHeaders(WatchState watch) {
+        java.util.Map<String, String> h = headers(
+                "X-YouTube-Client-Name", "1",
+                "X-YouTube-Client-Version", watch.clientVersion,
+                "Origin", "https://www.youtube.com",
+                "Referer", "https://www.youtube.com/"
+        );
+        if (watch.visitorData != null && !watch.visitorData.isEmpty()) {
+            h.put("X-Goog-Visitor-Id", watch.visitorData);
+        }
+        return h;
+    }
+
+    private static String findTranscriptParams(JSONObject root) {
+        if (root == null) return null;
+        return findTranscriptParamsAny(root);
+    }
+
+    private static String findTranscriptParamsAny(Object node) {
+        if (node instanceof JSONObject) {
+            JSONObject o = (JSONObject) node;
+            JSONObject endpoint = o.optJSONObject("getTranscriptEndpoint");
+            if (endpoint != null) {
+                String p = endpoint.optString("params", "");
+                if (!p.isEmpty()) return p;
+            }
+            JSONArray names = o.names();
+            if (names != null) {
+                for (int i = 0; i < names.length(); i++) {
+                    String key = names.optString(i);
+                    Object child = o.opt(key);
+                    String p = findTranscriptParamsAny(child);
+                    if (p != null) return p;
+                }
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray a = (JSONArray) node;
+            for (int i = 0; i < a.length(); i++) {
+                String p = findTranscriptParamsAny(a.opt(i));
+                if (p != null) return p;
+            }
+        }
+        return null;
+    }
+
+    private static List<Segment> parseTranscriptPanelSegments(JSONObject root) {
+        List<Segment> out = new ArrayList<>();
+        collectTranscriptSegments(root, out);
+        Collections.sort(out, Comparator.comparingLong(s -> s.startMs));
+
+        // Fill missing durations from the next segment.
+        List<Segment> normalized = new ArrayList<>();
+        for (int i = 0; i < out.size(); i++) {
+            Segment s = out.get(i);
+            long dur = s.durationMs;
+            if (dur <= 0 && i + 1 < out.size()) dur = Math.max(1, out.get(i + 1).startMs - s.startMs);
+            if (dur <= 0) dur = 2000;
+            normalized.add(new Segment(s.text, s.startMs, dur));
+        }
+        return normalized;
+    }
+
+    private static void collectTranscriptSegments(Object node, List<Segment> out) {
+        if (node instanceof JSONObject) {
+            JSONObject o = (JSONObject) node;
+            JSONObject r = o.optJSONObject("transcriptSegmentRenderer");
+            if (r != null) {
+                String text = textFromRunsOrSimple(r.optJSONObject("snippet"));
+                text = cleanText(text);
+                long start = safeLong(r.optString("startMs", "0"));
+                long end = safeLong(r.optString("endMs", "0"));
+                if (!text.isEmpty()) out.add(new Segment(text, start, end > start ? end - start : 0));
+                return;
+            }
+            JSONArray names = o.names();
+            if (names != null) {
+                for (int i = 0; i < names.length(); i++) collectTranscriptSegments(o.opt(names.optString(i)), out);
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray a = (JSONArray) node;
+            for (int i = 0; i < a.length(); i++) collectTranscriptSegments(a.opt(i), out);
+        }
+    }
+
+    private static List<Track> parseTracks(JSONObject player) {
+        List<Track> out = new ArrayList<>();
+        if (player == null) return out;
+        JSONObject captions = player.optJSONObject("captions");
+        if (captions == null) return out;
+        JSONObject renderer = captions.optJSONObject("playerCaptionsTracklistRenderer");
+        if (renderer == null) return out;
+        JSONArray tracks = renderer.optJSONArray("captionTracks");
+        if (tracks == null) return out;
+
+        for (int i = 0; i < tracks.length(); i++) {
+            JSONObject x = tracks.optJSONObject(i);
+            if (x == null) continue;
+            String code = x.optString("languageCode", "");
+            String base = x.optString("baseUrl", "");
+            if (code.isEmpty() || base.isEmpty()) continue;
+            String name = textFromRunsOrSimple(x.optJSONObject("name"));
