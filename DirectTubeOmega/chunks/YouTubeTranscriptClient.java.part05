@@ -1,0 +1,132 @@
+            if (name.isEmpty()) name = code;
+            out.add(new Track(code, name, "asr".equals(x.optString("kind")),
+                    x.optBoolean("isTranslatable", false), base));
+        }
+        return out;
+    }
+
+    private static final class TrackChoice {
+        Track track;
+        String translationCode;
+        boolean translated;
+    }
+
+    private static TrackChoice chooseTrack(List<Track> tracks, String[] prefs) {
+        TrackChoice c = new TrackChoice();
+
+        for (String pref : prefs) {
+            for (Track t : tracks) {
+                if (!t.generated && languageMatches(t.languageCode, pref)) {
+                    c.track = t;
+                    return c;
+                }
+            }
+            for (Track t : tracks) {
+                if (t.generated && languageMatches(t.languageCode, pref)) {
+                    c.track = t;
+                    return c;
+                }
+            }
+        }
+
+        Track fallback = null;
+        for (Track t : tracks) if (!t.generated) { fallback = t; break; }
+        if (fallback == null && !tracks.isEmpty()) fallback = tracks.get(0);
+        c.track = fallback;
+
+        if (fallback != null && fallback.translatable && prefs.length > 0
+                && !languageMatches(fallback.languageCode, prefs[0])) {
+            c.translationCode = prefs[0];
+            c.translated = true;
+        }
+        return c;
+    }
+
+    private static List<Segment> fetchCaptionUrl(String baseUrl, String translationCode, String cookie)
+            throws Exception {
+        String url = baseUrl.replace("&fmt=srv3", "").replace("&fmt=srv1", "");
+        if (translationCode != null && !translationCode.isEmpty()) {
+            url += (url.contains("?") ? "&" : "?") + "tlang=" + enc(translationCode);
+        }
+
+        String jsonUrl = url + (url.contains("?") ? "&" : "?") + "fmt=json3";
+        HttpResponse jr = get(jsonUrl, WEB_UA, cookie, null);
+        if (jr.code == 429) throw new Exception("YouTube rate-limited caption download.");
+        if (jr.code >= 200 && jr.code < 300 && jr.body.trim().startsWith("{")) {
+            List<Segment> parsed = parseJson3(jr.body);
+            if (!parsed.isEmpty()) return cleanSegments(parsed);
+        }
+
+        HttpResponse xr = get(url, WEB_UA, cookie, null);
+        if (xr.code >= 200 && xr.code < 300 && xr.bytes.length > 0) {
+            List<Segment> parsed = parseXml(xr.bytes);
+            if (!parsed.isEmpty()) return cleanSegments(parsed);
+        }
+        return new ArrayList<>();
+    }
+
+    private static Result resultFrom(String videoId, JSONObject player, TrackChoice choice,
+                                     List<Track> tracks, List<Segment> segs, String method) {
+        Result out = new Result();
+        out.videoId = videoId;
+        fillMetadata(out, player);
+        out.languageCode = choice.translated && choice.translationCode != null
+                ? choice.translationCode : choice.track.languageCode;
+        out.languageName = choice.track.languageName;
+        out.generated = choice.track.generated;
+        out.translated = choice.translated;
+        out.sourceMethod = method;
+        out.segments.addAll(segs);
+        Set<String> seen = new LinkedHashSet<>();
+        for (Track t : tracks) {
+            String label = t.languageCode + " — " + t.languageName + (t.generated ? " (auto)" : " (manual)");
+            if (seen.add(label)) out.availableLanguages.add(label);
+        }
+        return out;
+    }
+
+    private static void fillMetadata(Result out, JSONObject player) {
+        if (player == null) return;
+        JSONObject vd = player.optJSONObject("videoDetails");
+        if (vd != null) {
+            out.title = vd.optString("title", "");
+            out.author = vd.optString("author", "");
+        }
+    }
+
+    private static List<Segment> parseJson3(String raw) throws Exception {
+        List<Segment> out = new ArrayList<>();
+        JSONObject root = new JSONObject(raw);
+        JSONArray events = root.optJSONArray("events");
+        if (events == null) return out;
+
+        for (int i = 0; i < events.length(); i++) {
+            JSONObject e = events.optJSONObject(i);
+            if (e == null) continue;
+            JSONArray segs = e.optJSONArray("segs");
+            if (segs == null) continue;
+            StringBuilder text = new StringBuilder();
+            for (int j = 0; j < segs.length(); j++) {
+                JSONObject s = segs.optJSONObject(j);
+                if (s != null) text.append(s.optString("utf8", ""));
+            }
+            String cleaned = cleanText(text.toString());
+            if (cleaned.isEmpty()) continue;
+            out.add(new Segment(cleaned, e.optLong("tStartMs", 0), e.optLong("dDurationMs", 0)));
+        }
+        return out;
+    }
+
+    private static List<Segment> parseXml(byte[] bytes) throws Exception {
+        List<Segment> out = new ArrayList<>();
+        XmlPullParserFactory f = XmlPullParserFactory.newInstance();
+        f.setNamespaceAware(false);
+        XmlPullParser p = f.newPullParser();
+        p.setInput(new ByteArrayInputStream(bytes), "UTF-8");
+
+        int event = p.getEventType();
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.START_TAG) {
+                String tag = p.getName();
+                if ("text".equals(tag)) {
+                    long start = secondsToMs(p.getAttributeValue(null, "start"));
