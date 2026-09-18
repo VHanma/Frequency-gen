@@ -1,0 +1,139 @@
+                runOnUiThread(() -> fail(e));
+            }
+        });
+    }
+
+    private void showTrackDialog(YouTubeTranscriptClient.Probe p) {
+        String[] labels = new String[p.tracks.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = p.tracks.get(i).label();
+
+        new AlertDialog.Builder(this)
+                .setTitle("Caption track")
+                .setItems(labels, (dialog, which) -> {
+                    YouTubeTranscriptClient.Track chosen = p.tracks.get(which);
+                    String requested = languages.getText().toString().trim();
+                    String translate = null;
+                    if (!requested.isEmpty()) {
+                        String first = requested.split("[,\\s]+")[0];
+                        boolean same = chosen.languageCode.equalsIgnoreCase(first)
+                                || chosen.languageCode.toLowerCase(Locale.US).startsWith(first.toLowerCase(Locale.US) + "-");
+                        if (!same && chosen.translatable) translate = first;
+                    }
+                    fetchChosenTrack(p, chosen, translate);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void fetchChosenTrack(YouTubeTranscriptClient.Probe p, YouTubeTranscriptClient.Track chosen, String translate) {
+        busy("Downloading " + chosen.label() + "…");
+        executor.submit(() -> {
+            try {
+                YouTubeTranscriptClient.Result r = YouTubeTranscriptClient.fetchTrack(p, chosen, translate);
+                runOnUiThread(() -> acceptResult(p, r));
+            } catch (Exception e) {
+                runOnUiThread(() -> fail(e));
+            }
+        });
+    }
+
+    private void acceptResult(YouTubeTranscriptClient.Probe p, YouTubeTranscriptClient.Result r) {
+        currentProbe = p;
+        lastResult = r;
+        searchOffset = -1;
+        TranscriptStore.save(this, r);
+        render();
+        setBusy(false);
+        setResultButtons(true);
+        String mode = r.generated ? "auto" : "manual";
+        String translated = r.translated ? " → " + r.languageCode : "";
+        status.setText(
+                safeTitle(r) + "\n" +
+                r.languageName + " [" + r.languageCode + "] • " + mode + translated +
+                " • " + r.segments.size() + " segments\n" +
+                "route: " + r.sourceMethod
+        );
+    }
+
+    private void fail(Exception e) {
+        setBusy(false);
+        status.setText("Failed: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+    }
+
+    private void busy(String message) {
+        setBusy(true);
+        status.setText(message);
+    }
+
+    private void setBusy(boolean busy) {
+        fetch.setEnabled(!busy);
+        track.setEnabled(!busy);
+        history.setEnabled(!busy);
+        if (busy) export.setEnabled(false);
+        else export.setEnabled(lastResult != null);
+    }
+
+    private void setResultButtons(boolean enabled) {
+        export.setEnabled(enabled);
+        copy.setEnabled(enabled);
+        share.setEnabled(enabled);
+        nextMatch.setEnabled(enabled);
+    }
+
+    private void render() {
+        if (lastResult == null) {
+            output.setText("");
+            return;
+        }
+        if (timestamps.isChecked()) renderTimestamped();
+        else output.setText(lastResult.plainText());
+        searchOffset = -1;
+    }
+
+    private void renderTimestamped() {
+        SpannableStringBuilder b = new SpannableStringBuilder();
+        for (YouTubeTranscriptClient.Segment s : lastResult.segments) {
+            int start = b.length();
+            String stamp = "[" + YouTubeTranscriptClient.shortTime(s.startMs) + "]";
+            b.append(stamp);
+            final long target = s.startMs;
+            b.setSpan(new ClickableSpan() {
+                @Override public void onClick(View widget) { openVideoAt(target); }
+                @Override public void updateDrawState(TextPaint ds) {
+                    ds.setColor(Color.rgb(110, 190, 255));
+                    ds.setUnderlineText(false);
+                    ds.setFakeBoldText(true);
+                }
+            }, start, start + stamp.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            b.append(' ').append(s.text.trim()).append('\n');
+        }
+        output.setText(b);
+    }
+
+    private void findNext() {
+        if (lastResult == null) return;
+        String q = search.getText().toString();
+        if (q.trim().isEmpty()) {
+            toast("Type something to search.");
+            return;
+        }
+
+        String body = output.getText().toString();
+        String lower = body.toLowerCase(Locale.US);
+        String needle = q.toLowerCase(Locale.US);
+        int from = Math.max(0, searchOffset + 1);
+        int found = lower.indexOf(needle, from);
+        if (found < 0 && from > 0) found = lower.indexOf(needle);
+        if (found < 0) {
+            toast("No match.");
+            return;
+        }
+        searchOffset = found;
+
+        SpannableStringBuilder marked = new SpannableStringBuilder(output.getText());
+        BackgroundColorSpan span = new BackgroundColorSpan(Color.rgb(118, 84, 0));
+        marked.setSpan(span, found, Math.min(found + q.length(), marked.length()), Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+        output.setText(marked);
+        output.setMovementMethod(LinkMovementMethod.getInstance());
+
+        final int line = output.getLayout() == null ? 0 : output.getLayout().getLineForOffset(found);
