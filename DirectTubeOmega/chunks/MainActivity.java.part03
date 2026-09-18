@@ -1,0 +1,127 @@
+        output.post(() -> {
+            if (output.getLayout() != null) outputScroll.smoothScrollTo(0, output.getLayout().getLineTop(line));
+        });
+    }
+
+    private void copyTranscript() {
+        if (lastResult == null) return;
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("YouTube transcript", currentDisplayText()));
+        toast("Copied.");
+    }
+
+    private void shareTranscript() {
+        if (lastResult == null) return;
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_SUBJECT, safeTitle(lastResult));
+        send.putExtra(Intent.EXTRA_TEXT, currentDisplayText());
+        startActivity(Intent.createChooser(send, "Share transcript"));
+    }
+
+    private void showExport() {
+        if (lastResult == null) return;
+        String[] formats = {"TXT clean", "TXT timestamped", "SRT", "VTT", "CSV", "JSON"};
+        new AlertDialog.Builder(this)
+                .setTitle("Export")
+                .setItems(formats, (dialog, which) -> {
+                    String base = lastResult.videoId + "_" + lastResult.languageCode;
+                    switch (which) {
+                        case 0: saveDocument(base + ".txt", "text/plain", lastResult.plainText()); break;
+                        case 1: saveDocument(base + "_timestamps.txt", "text/plain", lastResult.timestampedText()); break;
+                        case 2: saveDocument(base + ".srt", "application/x-subrip", lastResult.srt()); break;
+                        case 3: saveDocument(base + ".vtt", "text/vtt", lastResult.vtt()); break;
+                        case 4: saveDocument(base + ".csv", "text/csv", lastResult.csv()); break;
+                        case 5: saveDocument(base + ".json", "application/json", lastResult.json()); break;
+                    }
+                })
+                .show();
+    }
+
+    private void saveDocument(String name, String mime, String text) {
+        pendingSaveText = text;
+        pendingMime = mime;
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType(mime);
+        i.putExtra(Intent.EXTRA_TITLE, name);
+        startActivityForResult(i, SAVE_DOC);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == SAVE_DOC && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri == null || pendingSaveText == null) return;
+            try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                if (os == null) throw new Exception("Could not open destination.");
+                os.write(pendingSaveText.getBytes(StandardCharsets.UTF_8));
+                os.flush();
+                toast("Saved.");
+            } catch (Exception e) {
+                toast("Save failed: " + e.getMessage());
+            }
+        }
+    }
+
+    private void showHistory() {
+        List<TranscriptStore.Entry> entries = TranscriptStore.list(this);
+        if (entries.isEmpty()) {
+            toast("History is empty.");
+            return;
+        }
+        String[] labels = new String[entries.size()];
+        for (int i = 0; i < entries.size(); i++) labels[i] = entries.get(i).label();
+        new AlertDialog.Builder(this)
+                .setTitle("Recent transcripts")
+                .setItems(labels, (dialog, which) -> {
+                    try {
+                        lastResult = TranscriptStore.load(this, entries.get(which));
+                        currentProbe = null;
+                        input.setText("https://www.youtube.com/watch?v=" + lastResult.videoId);
+                        render();
+                        setResultButtons(true);
+                        status.setText("Loaded from local history\n" + safeTitle(lastResult));
+                    } catch (Exception e) {
+                        toast("Could not open saved transcript.");
+                    }
+                })
+                .setNeutralButton("Clear history", (dialog, which) -> {
+                    TranscriptStore.clear(this);
+                    toast("History cleared.");
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void openVideoAt(long ms) {
+        String id = lastResult != null ? lastResult.videoId : YouTubeTranscriptClient.extractVideoId(input.getText().toString());
+        if (id == null) {
+            toast("No video loaded.");
+            return;
+        }
+        long seconds = Math.max(0, ms / 1000);
+        Uri uri = Uri.parse("https://www.youtube.com/watch?v=" + id + (seconds > 0 ? "&t=" + seconds + "s" : ""));
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (Exception e) {
+            toast("No app can open the video.");
+        }
+    }
+
+    private void clearScreen() {
+        lastResult = null;
+        currentProbe = null;
+        searchOffset = -1;
+        input.setText("");
+        search.setText("");
+        output.setText("");
+        status.setText("Ready.");
+        setResultButtons(false);
+    }
+
+    private String currentDisplayText() {
+        return timestamps.isChecked() ? lastResult.timestampedText() : lastResult.plainText();
+    }
+
