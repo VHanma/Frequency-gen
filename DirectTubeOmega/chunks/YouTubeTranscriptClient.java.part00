@@ -1,0 +1,148 @@
+package com.rivalomega.directtube;
+
+import android.text.Html;
+import android.os.Build;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public final class YouTubeTranscriptClient {
+
+    private static final String WATCH = "https://www.youtube.com/watch?v=";
+    private static final String YTI = "https://www.youtube.com/youtubei/v1/";
+
+    // Current widely-used sdkless client. Omitting androidSdkVersion is intentional.
+    private static final String ANDROID_CLIENT_VERSION = "20.10.38";
+    private static final String ANDROID_UA =
+            "com.google.android.youtube/" + ANDROID_CLIENT_VERSION +
+            " (Linux; U; Android 11) gzip";
+
+    private static final String WEB_UA =
+            "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36";
+
+    private static final String DEFAULT_COOKIE = "CONSENT=YES+cb; SOCS=CAI";
+
+    private static final Pattern ID_ONLY = Pattern.compile("^[A-Za-z0-9_-]{11}$");
+    private static final Pattern URL_ID = Pattern.compile(
+            "(?:youtu\\.be/|youtube(?:-nocookie)?\\.com/(?:watch\\?(?:[^#]*&)?v=|shorts/|embed/|live/))([A-Za-z0-9_-]{11})",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern API_KEY = Pattern.compile(
+            "\\\"INNERTUBE_API_KEY\\\"\\s*:\\s*\\\"([^\\\"]+)\\\""
+    );
+    private static final Pattern CLIENT_VERSION = Pattern.compile(
+            "\\\"INNERTUBE_CLIENT_VERSION\\\"\\s*:\\s*\\\"([^\\\"]+)\\\""
+    );
+    private static final Pattern VISITOR_DATA = Pattern.compile(
+            "\\\"VISITOR_DATA\\\"\\s*:\\s*\\\"([^\\\"]+)\\\""
+    );
+
+    private YouTubeTranscriptClient() {}
+
+    public static final class Segment {
+        public final String text;
+        public final long startMs;
+        public final long durationMs;
+
+        Segment(String text, long startMs, long durationMs) {
+            this.text = text;
+            this.startMs = Math.max(0, startMs);
+            this.durationMs = Math.max(0, durationMs);
+        }
+    }
+
+    public static final class Track {
+        public final String languageCode;
+        public final String languageName;
+        public final boolean generated;
+        public final boolean translatable;
+        public final String baseUrl;
+
+        Track(String languageCode, String languageName, boolean generated,
+              boolean translatable, String baseUrl) {
+            this.languageCode = languageCode;
+            this.languageName = languageName;
+            this.generated = generated;
+            this.translatable = translatable;
+            this.baseUrl = baseUrl;
+        }
+
+        public String label() {
+            return languageCode + " • " + languageName + (generated ? " • auto" : " • manual");
+        }
+    }
+
+    public static final class Result {
+        public String videoId;
+        public String title = "";
+        public String author = "";
+        public String languageCode = "";
+        public String languageName = "";
+        public boolean generated;
+        public boolean translated;
+        public String sourceMethod = "";
+        public final List<String> availableLanguages = new ArrayList<>();
+        public final List<Segment> segments = new ArrayList<>();
+
+        public String plainText() {
+            StringBuilder out = new StringBuilder();
+            for (Segment s : segments) {
+                if (out.length() > 0) out.append(' ');
+                out.append(s.text.trim());
+            }
+            return out.toString().replaceAll("\\s{2,}", " ").trim();
+        }
+
+        public String timestampedText() {
+            StringBuilder out = new StringBuilder();
+            for (Segment s : segments) {
+                out.append('[').append(shortTime(s.startMs)).append("] ")
+                        .append(s.text.trim()).append('\n');
+            }
+            return out.toString().trim();
+        }
+
+        public String srt() {
+            StringBuilder out = new StringBuilder();
+            int i = 1;
+            for (Segment s : normalizedDurations(segments)) {
+                long end = s.startMs + Math.max(1, s.durationMs);
+                out.append(i++).append('\n')
+                        .append(srtTime(s.startMs)).append(" --> ").append(srtTime(end)).append('\n')
+                        .append(s.text.trim()).append("\n\n");
+            }
+            return out.toString();
+        }
+
+        public String vtt() {
+            StringBuilder out = new StringBuilder("WEBVTT\n\n");
+            for (Segment s : normalizedDurations(segments)) {
+                long end = s.startMs + Math.max(1, s.durationMs);
+                out.append(vttTime(s.startMs)).append(" --> ").append(vttTime(end)).append('\n')
+                        .append(s.text.trim()).append("\n\n");
+            }
+            return out.toString();
+        }
+
