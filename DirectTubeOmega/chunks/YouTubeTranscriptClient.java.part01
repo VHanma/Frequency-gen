@@ -1,0 +1,128 @@
+        public String csv() {
+            StringBuilder out = new StringBuilder("start_ms,duration_ms,start_time,text\n");
+            for (Segment s : normalizedDurations(segments)) {
+                out.append(s.startMs).append(',')
+                        .append(s.durationMs).append(',')
+                        .append(csvEscape(shortTime(s.startMs))).append(',')
+                        .append(csvEscape(s.text)).append('\n');
+            }
+            return out.toString();
+        }
+
+        public String markdown() {
+            StringBuilder out = new StringBuilder();
+            if (!title.isEmpty()) out.append("# ").append(title).append("\n\n");
+            out.append("YouTube: https://www.youtube.com/watch?v=").append(videoId).append("\n\n");
+            for (Segment s : segments) {
+                out.append("**[").append(shortTime(s.startMs)).append("]** ")
+                        .append(s.text.trim()).append("\n\n");
+            }
+            return out.toString();
+        }
+
+        public String json() {
+            try {
+                JSONObject root = new JSONObject();
+                root.put("videoId", videoId);
+                root.put("title", title);
+                root.put("author", author);
+                root.put("languageCode", languageCode);
+                root.put("languageName", languageName);
+                root.put("generated", generated);
+                root.put("translated", translated);
+                root.put("sourceMethod", sourceMethod);
+                root.put("availableLanguages", new JSONArray(availableLanguages));
+
+                JSONArray a = new JSONArray();
+                for (Segment s : normalizedDurations(segments)) {
+                    JSONObject x = new JSONObject();
+                    x.put("text", s.text);
+                    x.put("startMs", s.startMs);
+                    x.put("durationMs", s.durationMs);
+                    a.put(x);
+                }
+                root.put("segments", a);
+                return root.toString(2);
+            } catch (JSONException e) {
+                return "{}";
+            }
+        }
+
+        public static Result fromJson(String raw) throws JSONException {
+            JSONObject root = new JSONObject(raw);
+            Result r = new Result();
+            r.videoId = root.optString("videoId", "");
+            r.title = root.optString("title", "");
+            r.author = root.optString("author", "");
+            r.languageCode = root.optString("languageCode", "");
+            r.languageName = root.optString("languageName", "");
+            r.generated = root.optBoolean("generated", false);
+            r.translated = root.optBoolean("translated", false);
+            r.sourceMethod = root.optString("sourceMethod", "saved");
+            JSONArray langs = root.optJSONArray("availableLanguages");
+            if (langs != null) {
+                for (int i = 0; i < langs.length(); i++) r.availableLanguages.add(langs.optString(i));
+            }
+            JSONArray a = root.optJSONArray("segments");
+            if (a != null) {
+                for (int i = 0; i < a.length(); i++) {
+                    JSONObject x = a.optJSONObject(i);
+                    if (x != null) {
+                        r.segments.add(new Segment(
+                                x.optString("text", ""),
+                                x.optLong("startMs", 0),
+                                x.optLong("durationMs", 0)
+                        ));
+                    }
+                }
+            }
+            return r;
+        }
+    }
+
+    public static final class Probe {
+        public String videoId;
+        public String title = "";
+        public String author = "";
+        public String sourceMethod = "";
+        public final List<Track> tracks = new ArrayList<>();
+        private WatchState watch;
+        private JSONObject player;
+    }
+
+    public static Probe probe(String urlOrId) throws Exception {
+        String videoId = extractVideoId(urlOrId);
+        if (videoId == null) throw new Exception("Could not find an 11-character YouTube video ID.");
+
+        WatchState watch = loadWatchState(videoId);
+        JSONObject player = null;
+        String method = "";
+
+        try {
+            JSONObject client = new JSONObject();
+            client.put("hl", "en");
+            client.put("gl", "US");
+            client.put("clientName", "ANDROID");
+            client.put("clientVersion", ANDROID_CLIENT_VERSION);
+            client.put("osName", "Android");
+            client.put("osVersion", "11");
+            client.put("userAgent", ANDROID_UA);
+
+            JSONObject context = new JSONObject();
+            context.put("client", client);
+
+            JSONObject payload = new JSONObject();
+            payload.put("context", context);
+            payload.put("videoId", videoId);
+            payload.put("contentCheckOk", true);
+            payload.put("racyCheckOk", true);
+
+            HttpResponse r = postJson(
+                    YTI + "player?key=" + enc(watch.apiKey) + "&prettyPrint=false",
+                    payload.toString(), ANDROID_UA, watch.cookie,
+                    headers("X-YouTube-Client-Name", "3", "X-YouTube-Client-Version", ANDROID_CLIENT_VERSION)
+            );
+            if (r.code >= 200 && r.code < 300) {
+                JSONObject candidate = new JSONObject(r.body);
+                if (!parseTracks(candidate).isEmpty()) {
+                    player = candidate;
