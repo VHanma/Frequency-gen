@@ -1,0 +1,160 @@
+package com.rivalomega.directtube;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.net.Uri;
+import android.os.Bundle;
+import android.text.InputType;
+import android.text.Spannable;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.TextPaint;
+import android.text.method.LinkMovementMethod;
+import android.text.style.BackgroundColorSpan;
+import android.text.style.ClickableSpan;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class MainActivity extends Activity {
+
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private EditText input;
+    private EditText languages;
+    private EditText search;
+    private TextView status;
+    private TextView output;
+    private ScrollView outputScroll;
+    private Button fetch;
+    private Button track;
+    private Button history;
+    private Button export;
+    private Button copy;
+    private Button share;
+    private Button nextMatch;
+    private CheckBox timestamps;
+
+    private YouTubeTranscriptClient.Result lastResult;
+    private YouTubeTranscriptClient.Probe currentProbe;
+    private int searchOffset = -1;
+
+    private String pendingSaveText;
+    private String pendingMime = "text/plain";
+    private static final int SAVE_DOC = 5001;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        buildUi();
+        acceptIncomingIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        acceptIncomingIntent(intent);
+    }
+
+    private void buildUi() {
+        int pad = dp(12);
+        int fg = Color.rgb(235, 239, 246);
+        int muted = Color.rgb(160, 170, 186);
+        int bg = Color.rgb(12, 16, 24);
+
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(pad, pad, pad, pad);
+        root.setBackgroundColor(bg);
+
+        TextView title = new TextView(this);
+        title.setText("DIRECTTUBE Ω");
+        title.setTextSize(25);
+        title.setTextColor(fg);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        root.addView(title);
+
+        TextView sub = new TextView(this);
+        sub.setText("YouTube → direct caption track → searchable transcript");
+        sub.setTextColor(muted);
+        sub.setTextSize(12);
+        sub.setPadding(0, 0, 0, dp(8));
+        root.addView(sub);
+
+        input = field("Paste YouTube URL or video ID", false);
+        root.addView(input, full());
+
+        LinearLayout prefs = new LinearLayout(this);
+        prefs.setOrientation(LinearLayout.HORIZONTAL);
+        languages = field("Language: en, es…", true);
+        languages.setText("en");
+        prefs.addView(languages, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        timestamps = new CheckBox(this);
+        timestamps.setText("Timestamps");
+        timestamps.setTextColor(fg);
+        timestamps.setChecked(true);
+        prefs.addView(timestamps, new LinearLayout.LayoutParams(dp(130), dp(50)));
+        root.addView(prefs, full());
+
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        fetch = button("FETCH");
+        track = button("TRACK");
+        history = button("HISTORY");
+        export = button("EXPORT");
+        row1.addView(fetch, weight());
+        row1.addView(track, weight());
+        row1.addView(history, weight());
+        row1.addView(export, weight());
+        root.addView(row1, full());
+
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setOrientation(LinearLayout.HORIZONTAL);
+        search = field("Search transcript", true);
+        nextMatch = button("NEXT");
+        searchRow.addView(search, new LinearLayout.LayoutParams(0, dp(50), 1f));
+        searchRow.addView(nextMatch, new LinearLayout.LayoutParams(dp(90), dp(50)));
+        root.addView(searchRow, full());
+
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+        copy = button("COPY");
+        share = button("SHARE");
+        Button openVideo = button("VIDEO");
+        Button clear = button("CLEAR");
+        row2.addView(copy, weight());
+        row2.addView(share, weight());
+        row2.addView(openVideo, weight());
+        row2.addView(clear, weight());
+        root.addView(row2, full());
+
+        status = new TextView(this);
+        status.setText("Ready. You can also use YouTube → Share → DirectTube Ω.");
+        status.setTextColor(Color.rgb(126, 221, 188));
+        status.setTextSize(12);
+        status.setPadding(0, dp(8), 0, dp(8));
+        root.addView(status);
+
+        output = new TextView(this);
+        output.setTextIsSelectable(true);
