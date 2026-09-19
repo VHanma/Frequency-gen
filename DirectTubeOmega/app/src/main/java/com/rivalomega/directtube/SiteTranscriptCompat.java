@@ -229,15 +229,33 @@ final class SiteTranscriptCompat {
     }
 
     private static String get(String url) throws Exception {
-        HttpURLConnection c = open(url, "GET");
-        return read(c).requireOk();
+        String current = url;
+        for (int i = 0; i < 8; i++) {
+            HttpURLConnection c = open(current, "GET");
+            int code = c.getResponseCode();
+            if (isRedirect(code)) {
+                String location = c.getHeaderField("Location");
+                c.disconnect();
+                if (location == null || location.trim().isEmpty()) {
+                    throw new Exception("HTTP redirect returned no Location header.");
+                }
+                current = new URL(new URL(current), location).toString();
+                continue;
+            }
+            return read(c).requireOk();
+        }
+        throw new Exception("Too many HTTP redirects.");
+    }
+
+    private static boolean isRedirect(int code) {
+        return code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
     }
 
     private static HttpURLConnection open(String url, String method) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setConnectTimeout(15000);
         c.setReadTimeout(45000);
-        c.setInstanceFollowRedirects(true);
+        c.setInstanceFollowRedirects(false);
         c.setRequestMethod(method);
         c.setRequestProperty("User-Agent", UA);
         c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
