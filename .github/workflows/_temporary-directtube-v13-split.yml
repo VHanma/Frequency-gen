@@ -1,0 +1,35 @@
+name: Temporary DirectTube v1.3 APK splitter
+
+on:
+  push:
+    paths:
+      - '.github/workflows/_temporary-directtube-v13-split.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: directtube-omega-v1.3-bulk-r4
+          fetch-depth: 0
+      - name: Split committed APK into text chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          REL=DirectTubeOmega/releases/v1.3-bulk
+          test -s "$REL/DirectTubeOmega-v1.3-Bulk.apk"
+          rm -f "$REL"/apk.b64.part*
+          base64 -w0 "$REL/DirectTubeOmega-v1.3-Bulk.apk" > /tmp/apk.b64
+          split -b 16000 -d -a 2 /tmp/apk.b64 "$REL/apk.b64.part"
+          wc -c "$REL"/apk.b64.part*
+          sha256sum "$REL/DirectTubeOmega-v1.3-Bulk.apk"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$REL"/apk.b64.part*
+          git commit -m 'Add DirectTube v1.3 APK transfer chunks'
+          git push origin HEAD:directtube-omega-v1.3-bulk-r4
