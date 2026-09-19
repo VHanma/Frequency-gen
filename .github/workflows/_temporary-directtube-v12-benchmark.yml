@@ -1,0 +1,38 @@
+name: Temporary DirectTube v1.2 benchmark
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/_temporary-directtube-v12-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout DirectTube v1.2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: directtube-omega-v1.2-fullest
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install benchmark dependencies
+        run: pip install requests beautifulsoup4
+      - name: Benchmark youtube-transcript.io exact target
+        env:
+          VIDEO_ID: A7cfV5rwZdk
+        run: python DirectTubeOmega/tools/benchmark_site.py
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DirectTube-v1.2-benchmark-evidence
+          path: benchmark-output/
+          if-no-files-found: warn
+          retention-days: 3
