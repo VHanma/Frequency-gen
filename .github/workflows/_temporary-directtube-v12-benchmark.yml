@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
-          import json
+          import json, re
           j=json.load(open('benchmark-output/site.json',encoding='utf-8'))
           assert j.get('success'), 'site benchmark has no success result'
           r=j['success'][0]
@@ -58,14 +58,15 @@ jobs:
           tracks=r.get('tracks') or []
           assert tracks and tracks[0].get('transcript')
           segs=tracks[0]['transcript']
-          text=' '.join((x.get('text','') or '').strip() for x in segs).strip()
+          raw=' '.join((x.get('text','') or '') for x in segs)
+          text=re.sub(r'\s+', ' ', raw).strip()
           words=len(text.split())
           last=max(float(x.get('start',0))+float(x.get('dur',0)) for x in segs)
           assert len(segs) >= 2300, len(segs)
           assert words >= 7500, words
           assert last >= 3099.0, last
-          assert text.startswith("All right. Hope everyone's having a great Friday night.")
-          assert text.endswith('Have a great night.')
+          assert text.startswith("All right. Hope everyone's having a great Friday night."), repr(text[:100])
+          assert text.endswith('Have a great night.'), repr(text[-100:])
           print('FULL_TRANSCRIPT_GATE_OK', 'segments=',len(segs),'words=',words,'last=',last)
           PY
 
