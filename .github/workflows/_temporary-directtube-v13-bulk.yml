@@ -17,18 +17,18 @@ jobs:
       - name: Checkout DirectTube v1.3 bulk branch
         uses: actions/checkout@v4
         with:
-          ref: directtube-omega-v1.3-bulk-r2
+          ref: directtube-omega-v1.3-bulk
 
       - name: Reconstruct app sources
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p DirectTubeOmega/app/src/main/java/com/rivalomega/directtube
-          base64 -d DirectTubeOmega/MainActivity.java.gz.b64 | gzip -d > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
+          base64 -d DirectTubeOmega/MainActivity.v13.java.gz.b64 | gzip -d > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
           cat DirectTubeOmega/chunks/YouTubeTranscriptClient.java.part* > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
           python DirectTubeOmega/tools/patch_fullest.py
           echo '--- BULK SOURCE MARKERS ---'
-          grep -niE 'bulk|queue|transcribe all|export all|copy all' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java | head -80 || true
+          grep -niE 'bulk|queue|transcribe all|export all|copy all' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java | head -100
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
