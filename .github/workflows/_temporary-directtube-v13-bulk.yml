@@ -28,13 +28,11 @@ jobs:
           root = Path('DirectTubeOmega')
           java = root / 'app/src/main/java/com/rivalomega/directtube'
           java.mkdir(parents=True, exist_ok=True)
-
           p = root / 'MainActivity.v13.java.gz.b64'
           s = re.sub(r'\s+', '', p.read_text())
           s += '=' * (-len(s) % 4)
           main = java / 'MainActivity.java'
           main.write_bytes(gzip.decompress(base64.b64decode(s)))
-
           parts = sorted((root / 'chunks').glob('YouTubeTranscriptClient.java.part*'))
           if not parts:
               raise SystemExit('No YouTubeTranscriptClient chunks found')
@@ -43,12 +41,10 @@ jobs:
           print('RESTORED_MAIN', main.stat().st_size)
           print('RESTORED_CLIENT', client.stat().st_size, len(parts))
           PY
-
           cp DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java /tmp/MainActivity-v13.java
-          cd DirectTubeOmega
-          python3 tools/patch_fullest.py
-          cp /tmp/MainActivity-v13.java app/src/main/java/com/rivalomega/directtube/MainActivity.java
-          grep -q 'SiteTranscriptCompat.fetch' app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
+          python3 DirectTubeOmega/tools/patch_fullest.py
+          cp /tmp/MainActivity-v13.java DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
+          grep -q 'SiteTranscriptCompat.fetch' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
 
       - name: Verify bulk feature is present
         shell: bash
