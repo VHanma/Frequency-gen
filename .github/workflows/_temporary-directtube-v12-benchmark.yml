@@ -1,4 +1,4 @@
-name: Temporary DirectTube v1.2 benchmark
+name: Temporary DirectTube v1.2 full transcript build
 
 on:
   push:
@@ -10,29 +10,117 @@ permissions:
   contents: read
 
 jobs:
-  benchmark:
+  build-and-benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout DirectTube v1.2 branch
         uses: actions/checkout@v4
         with:
           ref: directtube-omega-v1.2-fullest
+
+      - name: Reconstruct and patch Android sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p DirectTubeOmega/app/src/main/java/com/rivalomega/directtube
+          base64 -d DirectTubeOmega/MainActivity.java.gz.b64 | gzip -d > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
+          cat DirectTubeOmega/chunks/YouTubeTranscriptClient.java.part* > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
+          python DirectTubeOmega/tools/patch_fullest.py
+          grep -q 'SiteTranscriptCompat.fetch' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
+          grep -q 'youtube-transcript-io-v2' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/SiteTranscriptCompat.java
+          grep -q 'YouTubeTranscriptClient.fetch(raw, langs)' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
+          sha256sum DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/{MainActivity.java,YouTubeTranscriptClient.java,SiteTranscriptCompat.java}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
       - name: Install benchmark dependencies
         run: pip install requests beautifulsoup4
-      - name: Benchmark youtube-transcript.io exact target
+
+      - name: Benchmark exact target against live site
         env:
           VIDEO_ID: A7cfV5rwZdk
         run: python DirectTubeOmega/tools/benchmark_site.py
-      - name: Upload benchmark evidence
-        if: always()
+
+      - name: Enforce full transcript acceptance gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          j=json.load(open('benchmark-output/site.json',encoding='utf-8'))
+          assert j.get('success'), 'site benchmark has no success result'
+          r=j['success'][0]
+          assert r.get('id') == 'A7cfV5rwZdk'
+          assert r.get('title') == 'LIVE Fight Study  THE POWER of the Jab'
+          tracks=r.get('tracks') or []
+          assert tracks and tracks[0].get('transcript')
+          segs=tracks[0]['transcript']
+          text=' '.join(x.get('text','') for x in segs)
+          words=len(text.split())
+          last=max(float(x.get('start',0))+float(x.get('dur',0)) for x in segs)
+          assert len(segs) >= 2300, len(segs)
+          assert words >= 7500, words
+          assert last >= 3099.0, last
+          assert text.startswith("All right. Hope everyone's having a great Friday night.")
+          assert text.rstrip().endswith('Have a great night.')
+          print('FULL_TRANSCRIPT_GATE_OK', 'segments=',len(segs),'words=',words,'last=',last)
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Build v1.2 APK
+        run: gradle --no-daemon -p DirectTubeOmega :app:assembleDebug --stacktrace
+
+      - name: Verify and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=DirectTubeOmega/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          apksigner verify --verbose "$APK"
+          unzip -t "$APK" >/dev/null
+          cp "$APK" DirectTubeOmega-v1.2-FullTranscript.apk
+          sha256sum DirectTubeOmega-v1.2-FullTranscript.apk > DirectTubeOmega-v1.2-FullTranscript.apk.sha256
+          mkdir -p final-source/com/rivalomega/directtube
+          cp DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/{MainActivity.java,YouTubeTranscriptClient.java,SiteTranscriptCompat.java,TranscriptStore.java} final-source/com/rivalomega/directtube/
+          cp DirectTubeOmega/app/build.gradle final-source/
+          cp DirectTubeOmega/app/src/main/AndroidManifest.xml final-source/
+          zip -qr DirectTubeOmega-v1.2-patched-source.zip final-source
+
+      - name: Upload APK and benchmark proof
         uses: actions/upload-artifact@v4
         with:
-          name: DirectTube-v1.2-benchmark-evidence
-          path: benchmark-output/
-          if-no-files-found: warn
-          retention-days: 3
+          name: DirectTubeOmega-v1.2-FullTranscript
+          path: |
+            DirectTubeOmega-v1.2-FullTranscript.apk
+            DirectTubeOmega-v1.2-FullTranscript.apk.sha256
+            DirectTubeOmega-v1.2-patched-source.zip
+            benchmark-output/site-summary.json
+          if-no-files-found: error
+          retention-days: 7
