@@ -1,0 +1,52 @@
+name: Publish DirectTube Omega v1.3 Bulk Release
+
+on:
+  push:
+    paths:
+      - '.github/workflows/_temporary-directtube-v13-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified bulk branch
+        uses: actions/checkout@v4
+        with:
+          ref: directtube-omega-v1.3-bulk-r4
+          fetch-depth: 0
+
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          REL=DirectTubeOmega/releases/v1.3-bulk
+          test -s "$REL/DirectTubeOmega-v1.3-Bulk.apk"
+          test -s "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256"
+          test -s "$REL/DirectTubeOmega-v1.3-Bulk-source.zip"
+          test -s "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
+          sha256sum -c "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256"
+          grep -q 'JAVA_FULL_TRANSCRIPT_GATE_OK' "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
+          grep -q 'words=7538' "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=directtube-v1.3-bulk-r4
+          REL=DirectTubeOmega/releases/v1.3-bulk
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            "$REL/DirectTubeOmega-v1.3-Bulk.apk" \
+            "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256" \
+            "$REL/DirectTubeOmega-v1.3-Bulk-source.zip" \
+            "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target directtube-omega-v1.3-bulk-r4 \
+            --title 'DirectTube Omega v1.3 Bulk' \
+            --notes 'Bulk transcription build. Preserves the v1.2 full-transcript engine and adds multi-URL queue, per-result access, Copy All, and Export All TXT. Benchmark A7cfV5rwZdk: 7,538 words through 3100.040s.'
