@@ -1,0 +1,3 @@
+Absolute Random Selector hardened APK verification trigger.
+Commit engine: OS SecureRandom + SHA-512 entropy stir + exact 2^63 rejection sampling.
+Sampling mode: with replacement.
