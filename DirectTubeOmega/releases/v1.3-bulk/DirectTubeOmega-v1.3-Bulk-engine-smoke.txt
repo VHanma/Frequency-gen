@@ -1,0 +1,7 @@
+JAVA_SITE_COMPAT source=youtube-transcript-io-v2
+JAVA_SITE_COMPAT segments=1156
+JAVA_SITE_COMPAT words=7538
+JAVA_SITE_COMPAT lastMs=3100040
+JAVA_SITE_COMPAT first=All right. Hope everyone's having a great Friday night. Going to do fight study. Forgive me. I don't have whoever requested it uh pulled up, but somebody mentioned this fight. I ne
+JAVA_SITE_COMPAT tail= tomorrow. But then, of course, a brand new spanking one coming out Sunday. Hey, what's it going to be on? Oh, it's going to be something good. All right, guys. Have a great night.
+JAVA_FULL_TRANSCRIPT_GATE_OK
