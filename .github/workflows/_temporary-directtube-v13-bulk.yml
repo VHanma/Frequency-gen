@@ -17,7 +17,7 @@ jobs:
       - name: Checkout v1.3 bulk branch
         uses: actions/checkout@v4
         with:
-          ref: directtube-omega-v1.3-bulk-r2
+          ref: directtube-omega-v1.3-bulk
 
       - name: Restore MainActivity source
         shell: bash
@@ -25,7 +25,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import base64, gzip, re
-          p = Path('DirectTubeOmega/MainActivity.java.gz.b64')
+          p = Path('DirectTubeOmega/MainActivity.v13.java.gz.b64')
           out = Path('DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java')
           out.parent.mkdir(parents=True, exist_ok=True)
           s = re.sub(r'\s+', '', p.read_text())
