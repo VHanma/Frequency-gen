@@ -28,7 +28,8 @@ jobs:
           test -s "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256"
           test -s "$REL/DirectTubeOmega-v1.3-Bulk-source.zip"
           test -s "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
-          sha256sum -c "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256"
+          EXPECTED=$(cut -d' ' -f1 "$REL/DirectTubeOmega-v1.3-Bulk.apk.sha256")
+          echo "$EXPECTED  $REL/DirectTubeOmega-v1.3-Bulk.apk" | sha256sum -c -
           grep -q 'JAVA_FULL_TRANSCRIPT_GATE_OK' "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
           grep -q 'words=7538' "$REL/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt"
 
