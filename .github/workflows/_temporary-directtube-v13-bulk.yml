@@ -12,49 +12,29 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
-      - name: Checkout v1.3 bulk branch
+      - name: Checkout v1.3 bulk r4 branch
         uses: actions/checkout@v4
         with:
-          ref: directtube-omega-v1.3-bulk
+          ref: directtube-omega-v1.3-bulk-r4
 
-      - name: Restore v1.3 UI and transcript engine
+      - name: Restore Android sources
         shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, gzip, re
-          root = Path('DirectTubeOmega')
-          java = root / 'app/src/main/java/com/rivalomega/directtube'
-          java.mkdir(parents=True, exist_ok=True)
-          p = root / 'MainActivity.v13.java.gz.b64'
-          s = re.sub(r'\s+', '', p.read_text())
-          s += '=' * (-len(s) % 4)
-          main = java / 'MainActivity.java'
-          main.write_bytes(gzip.decompress(base64.b64decode(s)))
-          parts = sorted((root / 'chunks').glob('YouTubeTranscriptClient.java.part*'))
-          if not parts:
-              raise SystemExit('No YouTubeTranscriptClient chunks found')
-          client = java / 'YouTubeTranscriptClient.java'
-          client.write_text(''.join(x.read_text() for x in parts), encoding='utf-8')
-          print('RESTORED_MAIN', main.stat().st_size)
-          print('RESTORED_CLIENT', client.stat().st_size, len(parts))
-          PY
-          cp DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java /tmp/MainActivity-v13.java
+          set -euo pipefail
+          mkdir -p DirectTubeOmega/app/src/main/java/com/rivalomega/directtube
+          base64 -d DirectTubeOmega/MainActivity.java.gz.b64 | gzip -d > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
+          cat DirectTubeOmega/chunks/YouTubeTranscriptClient.java.part* > DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
           python3 DirectTubeOmega/tools/patch_fullest.py
-          cp /tmp/MainActivity-v13.java DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java
-          grep -q 'SiteTranscriptCompat.fetch' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
-
-      - name: Verify bulk feature is present
-        shell: bash
-        run: |
           SRC='DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java'
-          grep -n -Ei 'bulk|copy all|export all|queue' "$SRC" | head -120
-          grep -q '1.3.0' DirectTubeOmega/app/build.gradle
           grep -qi 'Bulk transcribe' "$SRC"
+          grep -q 'Transcribe all' "$SRC"
+          grep -q 'Copy all' "$SRC"
+          grep -q 'Export all TXT' "$SRC"
           grep -q 'queue.size()' "$SRC"
-          test -s DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
+          grep -q 'SiteTranscriptCompat.fetch' DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java
+          grep -q 'versionName "1.3.0"' DirectTubeOmega/app/build.gradle
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -67,9 +47,10 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Install Android 35 packages using runner SDK
+      - name: Install Android 35 packages
         shell: bash
         run: |
+          set -euo pipefail
           export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -79,6 +60,22 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
+      - name: Verify full transcript engine benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar -o /tmp/json.jar
+          rm -rf /tmp/dt-smoke && mkdir -p /tmp/dt-smoke
+          javac -encoding UTF-8 -cp "/tmp/json.jar:$ANDROID_HOME/platforms/android-35/android.jar" -d /tmp/dt-smoke \
+            DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/YouTubeTranscriptClient.java \
+            DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/SiteTranscriptCompat.java \
+            DirectTubeOmega/tools/SiteCompatSmoke.java
+          java -cp "/tmp/dt-smoke:/tmp/json.jar:$ANDROID_HOME/platforms/android-35/android.jar" \
+            com.rivalomega.directtube.SiteCompatSmoke A7cfV5rwZdk | tee /tmp/java-smoke.txt
+          grep -q 'JAVA_FULL_TRANSCRIPT_GATE_OK' /tmp/java-smoke.txt
+          grep -q 'words=7538' /tmp/java-smoke.txt
+          grep -q 'lastMs=3100040' /tmp/java-smoke.txt
+
       - name: Build debug APK
         working-directory: DirectTubeOmega
         run: gradle --no-daemon assembleDebug
@@ -86,6 +83,7 @@ jobs:
       - name: Verify APK and package outputs
         shell: bash
         run: |
+          set -euo pipefail
           APK='DirectTubeOmega/app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
           unzip -t "$APK" >/dev/null
@@ -93,9 +91,12 @@ jobs:
           mkdir -p dist
           cp "$APK" dist/DirectTubeOmega-v1.3-Bulk.apk
           sha256sum dist/DirectTubeOmega-v1.3-Bulk.apk > dist/DirectTubeOmega-v1.3-Bulk.apk.sha256
-          cp DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/MainActivity.java dist/MainActivity-v1.3-Bulk.java
-          cd DirectTubeOmega
-          zip -qr ../dist/DirectTubeOmega-v1.3-Bulk-source.zip . -x 'app/build/*' '.gradle/*'
+          cp /tmp/java-smoke.txt dist/DirectTubeOmega-v1.3-Bulk-engine-smoke.txt
+          mkdir -p dist/source/com/rivalomega/directtube
+          cp DirectTubeOmega/app/src/main/java/com/rivalomega/directtube/{MainActivity.java,YouTubeTranscriptClient.java,SiteTranscriptCompat.java,TranscriptStore.java} dist/source/com/rivalomega/directtube/
+          cp DirectTubeOmega/app/build.gradle dist/source/
+          cp DirectTubeOmega/app/src/main/AndroidManifest.xml dist/source/
+          cd dist && zip -qr DirectTubeOmega-v1.3-Bulk-source.zip source && rm -rf source
 
       - name: Upload v1.3 bulk artifacts
         uses: actions/upload-artifact@v4
@@ -103,3 +104,4 @@ jobs:
           name: DirectTubeOmega-v1.3-Bulk
           path: dist/*
           if-no-files-found: error
+          retention-days: 7
