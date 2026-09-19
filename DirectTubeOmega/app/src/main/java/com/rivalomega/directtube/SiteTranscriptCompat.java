@@ -20,11 +20,18 @@ final class SiteTranscriptCompat {
     private static final String FIREBASE_SIGNUP = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=";
     private static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0";
 
-    private static final Pattern SCRIPT_SRC = Pattern.compile("<script[^>]+src=[\\\"']([^\\\"']+)[\\\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern SCRIPT_SRC = Pattern.compile(
+            "<script[^>]+src=[\\\"']([^\\\"']+)[\\\"']",
+            Pattern.CASE_INSENSITIVE
+    );
     private static final Pattern API_KEY = Pattern.compile("apiKey\\s*:\\s*[\\\"']([^\\\"']+)");
     private static final Pattern APP_ID = Pattern.compile("appId\\s*:\\s*[\\\"']([^\\\"']+)");
-    private static final Pattern CONTEXT = Pattern.compile(
-            "header\\s*:\\s*[\\\"']([^\\\"']+)[\\\"'][^}]{0,500}value\\s*:\\s*[\\\"']([^\\\"']+)[\\\"']",
+    private static final Pattern CONTEXT_HEADER_THEN_VALUE = Pattern.compile(
+            "header\\s*:\\s*[\\\"']([^\\\"']+)[\\\"'][^}]{0,900}value\\s*:\\s*[\\\"']([^\\\"']+)[\\\"']",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL
+    );
+    private static final Pattern CONTEXT_VALUE_THEN_HEADER = Pattern.compile(
+            "value\\s*:\\s*[\\\"']([^\\\"']+)[\\\"'][^}]{0,900}header\\s*:\\s*[\\\"']([^\\\"']+)[\\\"']",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL
     );
 
@@ -43,8 +50,7 @@ final class SiteTranscriptCompat {
 
     private static FirebaseConfig discoverFirebaseConfig() throws Exception {
         String home = get(BASE);
-        List<String> scripts = scriptUrls(BASE, home);
-        for (String scriptUrl : scripts) {
+        for (String scriptUrl : scriptUrls(BASE, home)) {
             String js;
             try { js = get(scriptUrl); } catch (Exception ignored) { continue; }
             if (!js.contains("apiKey") || !js.contains("appId")) continue;
@@ -56,18 +62,20 @@ final class SiteTranscriptCompat {
     }
 
     private static String anonymousFirebaseToken(FirebaseConfig cfg) throws Exception {
-        String url = FIREBASE_SIGNUP + enc(cfg.apiKey);
         JSONObject body = new JSONObject();
         body.put("returnSecureToken", true);
 
-        HttpURLConnection c = open(url, "POST");
+        HttpURLConnection c = open(FIREBASE_SIGNUP + enc(cfg.apiKey), "POST");
         c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         c.setRequestProperty("X-Client-Version", "Firefox/JsCore/10.14.1/FirebaseCore-web");
         String gmpid = firebaseGmpId(cfg.appId);
         if (!gmpid.isEmpty()) c.setRequestProperty("X-Firebase-gmpid", gmpid);
         write(c, body.toString());
+
         HttpResult r = read(c);
-        if (r.code < 200 || r.code >= 300) throw new Exception("Site anonymous auth returned HTTP " + r.code + ".");
+        if (r.code < 200 || r.code >= 300) {
+            throw new Exception("Site anonymous auth returned HTTP " + r.code + ".");
+        }
         String token = new JSONObject(r.body).optString("idToken", "");
         if (token.isEmpty()) throw new Exception("Site anonymous auth returned no token.");
         return token;
@@ -76,21 +84,34 @@ final class SiteTranscriptCompat {
     private static HeaderPair discoverRequestChannel(String videoId) throws Exception {
         String pageUrl = BASE + "videos/" + videoId;
         String page = get(pageUrl);
-        List<String> scripts = scriptUrls(pageUrl, page);
-        for (String scriptUrl : scripts) {
+
+        // The transcript page imports the request-channel helper from a shared Next.js chunk.
+        // Search every script loaded by the page, not just the chunk containing /api/transcripts/v2.
+        for (String scriptUrl : scriptUrls(pageUrl, page)) {
             String js;
             try { js = get(scriptUrl); } catch (Exception ignored) { continue; }
-            if (!js.contains("/api/transcripts")) continue;
-            Matcher m = CONTEXT.matcher(js);
-            while (m.find()) {
-                String name = m.group(1);
-                String value = m.group(2);
-                if (name != null && name.toLowerCase(Locale.US).startsWith("x-")) {
-                    return new HeaderPair(name, value);
-                }
+
+            Matcher forward = CONTEXT_HEADER_THEN_VALUE.matcher(js);
+            while (forward.find()) {
+                String name = forward.group(1);
+                String value = forward.group(2);
+                if (isRequestHeader(name, value)) return new HeaderPair(name, value);
+            }
+
+            Matcher reverse = CONTEXT_VALUE_THEN_HEADER.matcher(js);
+            while (reverse.find()) {
+                String value = reverse.group(1);
+                String name = reverse.group(2);
+                if (isRequestHeader(name, value)) return new HeaderPair(name, value);
             }
         }
         throw new Exception("Site transcript request channel was not found.");
+    }
+
+    private static boolean isRequestHeader(String name, String value) {
+        if (name == null || value == null || value.isEmpty()) return false;
+        String n = name.toLowerCase(Locale.US);
+        return n.startsWith("x-") && ("x-request-channel".equals(n) || n.contains("channel"));
     }
 
     private static JSONObject callTranscriptV2(String videoId, String token, HeaderPair channel) throws Exception {
@@ -107,10 +128,13 @@ final class SiteTranscriptCompat {
         c.setRequestProperty("Origin", "https://www.youtube-transcript.io");
         c.setRequestProperty("Referer", "https://www.youtube-transcript.io/");
         write(c, body.toString());
+
         HttpResult r = read(c);
         if (r.code == 402) throw new Exception("Site transcript allowance exhausted.");
         if (r.code == 401) throw new Exception("Site transcript session expired.");
-        if (r.code < 200 || r.code >= 300) throw new Exception("Site transcript API returned HTTP " + r.code + ".");
+        if (r.code < 200 || r.code >= 300) {
+            throw new Exception("Site transcript API returned HTTP " + r.code + ".");
+        }
         return new JSONObject(r.body);
     }
 
@@ -129,18 +153,21 @@ final class SiteTranscriptCompat {
         }
 
         JSONArray tracks = root.optJSONArray("tracks");
-        if (tracks == null || tracks.length() == 0) throw new Exception("Site returned no transcript tracks.");
+        if (tracks == null || tracks.length() == 0) {
+            throw new Exception("Site returned no transcript tracks.");
+        }
         JSONObject track = chooseTrack(tracks, preferredLanguages);
         if (track == null) track = tracks.optJSONObject(0);
         if (track == null) throw new Exception("Site transcript track was unreadable.");
+
         JSONArray transcript = track.optJSONArray("transcript");
-        if (transcript == null || transcript.length() == 0) throw new Exception("Site transcript was empty.");
+        if (transcript == null || transcript.length() == 0) {
+            throw new Exception("Site transcript was empty.");
+        }
 
         YouTubeTranscriptClient.Result out = new YouTubeTranscriptClient.Result();
         out.videoId = root.optString("id", videoId);
         out.title = root.optString("title", "");
-        JSONObject micro = root.optJSONObject("microformat");
-        if (micro != null) out.author = micro.optString("ownerChannelName", micro.optString("ownerProfileUrl", ""));
         out.languageCode = track.optString("language", "en");
         out.languageName = out.languageCode;
         out.generated = true;
@@ -167,6 +194,7 @@ final class SiteTranscriptCompat {
             long durMs = secondsStringToMs(x.optString("dur", "0"));
             out.segments.add(new YouTubeTranscriptClient.Segment(text, startMs, durMs));
         }
+
         if (out.segments.isEmpty()) throw new Exception("Site transcript contained no text.");
         return out;
     }
@@ -181,7 +209,9 @@ final class SiteTranscriptCompat {
             JSONObject t = tracks.optJSONObject(i);
             if (t == null) continue;
             String lang = t.optString("language", "").toLowerCase(Locale.US);
-            if (lang.equals(pref) || lang.startsWith(pref + "-") || pref.startsWith(lang + "-")) return t;
+            if (lang.equals(pref) || lang.startsWith(pref + "-") || pref.startsWith(lang + "-")) {
+                return t;
+            }
         }
         return tracks.optJSONObject(0);
     }
@@ -258,18 +288,30 @@ final class SiteTranscriptCompat {
     }
 
     private static final class FirebaseConfig {
-        final String apiKey, appId;
-        FirebaseConfig(String apiKey, String appId) { this.apiKey = apiKey; this.appId = appId; }
+        final String apiKey;
+        final String appId;
+        FirebaseConfig(String apiKey, String appId) {
+            this.apiKey = apiKey;
+            this.appId = appId;
+        }
     }
 
     private static final class HeaderPair {
-        final String name, value;
-        HeaderPair(String name, String value) { this.name = name; this.value = value; }
+        final String name;
+        final String value;
+        HeaderPair(String name, String value) {
+            this.name = name;
+            this.value = value;
+        }
     }
 
     private static final class HttpResult {
-        final int code; final String body;
-        HttpResult(int code, String body) { this.code = code; this.body = body; }
+        final int code;
+        final String body;
+        HttpResult(int code, String body) {
+            this.code = code;
+            this.body = body;
+        }
         String requireOk() throws Exception {
             if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
             return body;
