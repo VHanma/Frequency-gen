@@ -1,0 +1,47 @@
+name: OmegaVoice APK temporary build
+
+on:
+  push:
+    branches:
+      - build/omegavoice-apk-v03
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack isolated OmegaVoice project
+        run: unzip -q omegavoice_android_v03.zip -d omegavoice_build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Ensure Android SDK packages
+        run: yes | sdkmanager --licenses >/dev/null || true; sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build installable debug APK
+        working-directory: omegavoice_build/android
+        run: |
+          gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
+          ./gradlew --no-daemon clean assembleDebug --stacktrace
+      - name: Package result
+        run: |
+          mkdir -p artifact
+          cp omegavoice_build/android/app/build/outputs/apk/debug/app-debug.apk artifact/OmegaVoice-Free-v0.3.0.apk
+          sha256sum artifact/OmegaVoice-Free-v0.3.0.apk > artifact/OmegaVoice-Free-v0.3.0.apk.sha256
+          cp omegavoice_build/android/gradlew artifact/
+          cp omegavoice_build/android/gradlew.bat artifact/
+          cp -R omegavoice_build/android/gradle artifact/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OmegaVoice-Free-v0.3.0
+          path: artifact
+          if-no-files-found: error
