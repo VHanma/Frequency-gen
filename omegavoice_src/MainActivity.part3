@@ -1,0 +1,138 @@
+                f.put("top_p", topPValue);
+
+                byte[] wav = HttpTools.postMultipartBytes(base + "/speak", f);
+                File out = new File(getCacheDir(), "omega_output_" + System.currentTimeMillis() + ".wav");
+                try (FileOutputStream os = new FileOutputStream(out)) { os.write(wav); }
+                lastOutput = out;
+                lastSavedUri = null;
+                runOnUiThread(() -> {
+                    playButton.setEnabled(true);
+                    saveButton.setEnabled(true);
+                    shareButton.setEnabled(true);
+                    status.setText("Done • " + (wav.length / 1024) + " KiB WAV • " + v);
+                    playLast();
+                });
+            } catch (Exception e) {
+                setStatus("Generate error: " + friendlyError(e));
+            } finally {
+                setBusy(false, null);
+            }
+        });
+    }
+
+    private void confirmDeleteVoice() {
+        Object selected = voiceSpinner.getSelectedItem();
+        if (selected == null) return;
+        String name = selected.toString();
+        new AlertDialog.Builder(this)
+                .setTitle("Delete voice profile?")
+                .setMessage(name)
+                .setNegativeButton("CANCEL", null)
+                .setPositiveButton("DELETE", (d, w) -> deleteVoice(name))
+                .show();
+    }
+
+    private void deleteVoice(String name) {
+        final String base;
+        try { base = baseFromUi(); } catch (Exception e) { status.setText(e.getMessage()); return; }
+        setBusy(true, "Deleting " + name + "…");
+        io.execute(() -> {
+            try {
+                String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8.name()).replace("+", "%20");
+                HttpTools.deleteText(base + "/voices/" + encoded);
+                setStatus("Deleted voice profile: " + name);
+                refreshVoices(base, null);
+            } catch (Exception e) {
+                setStatus("Delete error: " + friendlyError(e));
+            } finally {
+                setBusy(false, null);
+            }
+        });
+    }
+
+    private void playLast() {
+        if (lastOutput == null || !lastOutput.exists()) return;
+        try {
+            if (player != null) player.release();
+            player = new MediaPlayer();
+            player.setDataSource(lastOutput.getAbsolutePath());
+            player.setOnCompletionListener(mp -> setStatus("Playback finished"));
+            player.prepare();
+            player.start();
+            status.setText("Playing " + lastOutput.getName());
+        } catch (Exception e) {
+            status.setText("Play error: " + e.getMessage());
+        }
+    }
+
+    private void saveLast() {
+        if (lastOutput == null || !lastOutput.exists()) return;
+        io.execute(() -> {
+            try {
+                Uri u = saveToDownloads(lastOutput);
+                lastSavedUri = u;
+                setStatus("Saved to Downloads/OmegaVoice");
+            } catch (Exception e) {
+                setStatus("Save error: " + e.getMessage());
+            }
+        });
+    }
+
+    private Uri saveToDownloads(File src) throws Exception {
+        String name = "OmegaVoice_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".wav";
+        if (Build.VERSION.SDK_INT >= 29) {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            cv.put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav");
+            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/OmegaVoice");
+            Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+            if (u == null) throw new IOException("MediaStore insert failed");
+            try (InputStream in = new FileInputStream(src); OutputStream out = getContentResolver().openOutputStream(u)) {
+                if (out == null) throw new IOException("Cannot open output");
+                copy(in, out);
+            }
+            return u;
+        } else {
+            File d = new File(getExternalFilesDir(null), "OmegaVoice");
+            if (!d.exists() && !d.mkdirs()) throw new IOException("Cannot create output folder");
+            File dst = new File(d, name);
+            try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dst)) { copy(in, out); }
+            return Uri.fromFile(dst);
+        }
+    }
+
+    private static void copy(InputStream in, OutputStream out) throws IOException {
+        byte[] b = new byte[64 * 1024];
+        int n;
+        while ((n = in.read(b)) >= 0) out.write(b, 0, n);
+    }
+
+    private void shareLast() {
+        if (lastOutput == null) return;
+        io.execute(() -> {
+            try {
+                if (lastSavedUri == null) lastSavedUri = saveToDownloads(lastOutput);
+                Uri u = lastSavedUri;
+                runOnUiThread(() -> {
+                    Intent i = new Intent(Intent.ACTION_SEND);
+                    i.setType("audio/wav");
+                    i.putExtra(Intent.EXTRA_STREAM, u);
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(Intent.createChooser(i, "Share OmegaVoice audio"));
+                });
+            } catch (Exception e) {
+                setStatus("Share error: " + e.getMessage());
+            }
+        });
+    }
+
+    @Override protected void onDestroy() {
+        super.onDestroy();
+        io.shutdownNow();
+        if (player != null) player.release();
+        if (recorder != null) {
+            try { recorder.stop(); } catch (Exception ignored) {}
+            try { recorder.release(); } catch (Exception ignored) {}
+        }
+    }
+}

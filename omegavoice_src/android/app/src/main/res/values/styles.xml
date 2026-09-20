@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.OmegaVoice" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#0A0C10</item>
+        <item name="android:statusBarColor">#0A0C10</item>
+        <item name="android:colorAccent">#9D7BFF</item>
+        <item name="android:windowBackground">#0A0C10</item>
+    </style>
+</resources>

@@ -1,0 +1,160 @@
+package com.omegavoice.app;
+
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.media.MediaPlayer;
+import android.media.MediaRecorder;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.provider.MediaStore;
+import android.view.View;
+import android.widget.*;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.*;
+import java.net.ConnectException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class MainActivity extends Activity {
+    private static final int PICK_REFS = 41;
+    private static final int MIC_PERMISSION = 42;
+
+    private final ArrayList<Uri> refs = new ArrayList<>();
+    private final ArrayList<String> voices = new ArrayList<>();
+    private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+    private EditText server, voiceName, speechText, candidates, seed, temperature, topP;
+    private TextView status, refCount;
+    private Spinner voiceSpinner, preset;
+    private Button recordButton, playButton, saveButton, shareButton, cloneButton, generateButton, deleteVoiceButton;
+
+    private MediaRecorder recorder;
+    private File recordingFile, lastOutput;
+    private MediaPlayer player;
+    private Uri lastSavedUri;
+    private volatile String lastBaseUrl = "http://127.0.0.1:7861";
+
+    @Override public void onCreate(Bundle b) {
+        super.onCreate(b);
+        setContentView(R.layout.activity_main);
+
+        server = findViewById(R.id.server);
+        voiceName = findViewById(R.id.voiceName);
+        speechText = findViewById(R.id.text);
+        candidates = findViewById(R.id.candidates);
+        seed = findViewById(R.id.seed);
+        temperature = findViewById(R.id.temperature);
+        topP = findViewById(R.id.topP);
+        status = findViewById(R.id.status);
+        refCount = findViewById(R.id.refCount);
+        voiceSpinner = findViewById(R.id.voiceSpinner);
+        preset = findViewById(R.id.preset);
+        recordButton = findViewById(R.id.recordRef);
+        playButton = findViewById(R.id.play);
+        saveButton = findViewById(R.id.save);
+        shareButton = findViewById(R.id.share);
+        cloneButton = findViewById(R.id.clone);
+        generateButton = findViewById(R.id.generate);
+        deleteVoiceButton = findViewById(R.id.deleteVoice);
+
+        SharedPreferences p = getSharedPreferences("omega", MODE_PRIVATE);
+        server.setText(p.getString("server", "http://127.0.0.1:7861"));
+
+        ArrayAdapter<String> presetAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                Arrays.asList("mobile", "ultra_fast", "fast", "standard", "high_quality"));
+        preset.setAdapter(presetAdapter);
+        preset.setSelection(2);
+        setVoiceAdapter(null);
+
+        findViewById(R.id.testServer).setOnClickListener(v -> testServer());
+        findViewById(R.id.refreshVoices).setOnClickListener(v -> refreshVoices());
+        findViewById(R.id.pickRefs).setOnClickListener(v -> pickRefs());
+        recordButton.setOnClickListener(v -> toggleRecording());
+        findViewById(R.id.clearRefs).setOnClickListener(v -> { refs.clear(); updateRefCount(); setStatus("Reference list cleared"); });
+        cloneButton.setOnClickListener(v -> cloneVoice());
+        generateButton.setOnClickListener(v -> generate());
+        deleteVoiceButton.setOnClickListener(v -> confirmDeleteVoice());
+        playButton.setOnClickListener(v -> playLast());
+        saveButton.setOnClickListener(v -> saveLast());
+        shareButton.setOnClickListener(v -> shareLast());
+
+        updateRefCount();
+        refreshVoices();
+    }
+
+    private String baseFromUi() {
+        String b = HttpTools.normalizeBase(server.getText().toString());
+        lastBaseUrl = b;
+        getSharedPreferences("omega", MODE_PRIVATE).edit().putString("server", b).apply();
+        return b;
+    }
+
+    private void setStatus(String s) { runOnUiThread(() -> status.setText(s)); }
+
+    private void setBusy(boolean busy, String message) {
+        runOnUiThread(() -> {
+            cloneButton.setEnabled(!busy);
+            generateButton.setEnabled(!busy);
+            deleteVoiceButton.setEnabled(!busy && !voices.isEmpty());
+            if (message != null) status.setText(message);
+        });
+    }
+
+    private String friendlyError(Exception e) {
+        String m = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+        if (e instanceof ConnectException || m.contains("Connection refused") || m.contains("failed to connect")) {
+            return "Local engine is offline. Start OmegaVoice in Termux, then tap TEST.\nEngine: " + lastBaseUrl;
+        }
+        return m;
+    }
+
+    private void setVoiceAdapter(String keepVoice) {
+        ArrayAdapter<String> a = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, voices);
+        voiceSpinner.setAdapter(a);
+        if (keepVoice != null) {
+            int ix = voices.indexOf(keepVoice);
+            if (ix >= 0) voiceSpinner.setSelection(ix);
+        }
+        deleteVoiceButton.setEnabled(!voices.isEmpty());
+    }
+
+    private void updateRefCount() {
+        refCount.setText(refs.size() + (refs.size() == 1 ? " reference clip" : " reference clips"));
+    }
+
+    private void testServer() {
+        final String base;
+        try { base = baseFromUi(); } catch (Exception e) { status.setText(e.getMessage()); return; }
+        setBusy(true, "Testing local engine…");
+        io.execute(() -> {
+            try {
+                String r = HttpTools.getText(base + "/health");
+                JSONObject j = new JSONObject(r);
+                String engine = j.optString("engine", "OmegaVoice engine");
+                setStatus("Engine OK • " + engine);
+            } catch (Exception e) {
+                setStatus("Engine error: " + friendlyError(e));
+            } finally {
+                setBusy(false, null);
+            }
+        });
+    }
+
+    private void refreshVoices() {
+        final String base;
+        try { base = baseFromUi(); } catch (Exception e) { status.setText(e.getMessage()); return; }
+        Object selected = voiceSpinner.getSelectedItem();
+        refreshVoices(base, selected == null ? null : selected.toString());
+    }
+

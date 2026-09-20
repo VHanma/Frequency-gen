@@ -1,0 +1,58 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#0A0C10">
+    <LinearLayout android:orientation="vertical" android:padding="18dp"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+        <TextView android:text="Ω OMEGAVOICE FREE" android:textStyle="bold" android:textSize="25sp" android:textColor="#FFFFFF"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <TextView android:text="Tortoise-lineage local cloning • no paid API" android:textColor="#AEB4C0" android:paddingBottom="12dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+        <TextView android:text="ENGINE" android:textColor="#9D7BFF" android:textStyle="bold" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <EditText android:id="@+id/server" android:hint="http://127.0.0.1:7861" android:textColor="#FFFFFF" android:textColorHint="#6F7683"
+            android:inputType="textUri" android:singleLine="true" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/testServer" android:text="TEST" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <Button android:id="@+id/refreshVoices" android:text="REFRESH VOICES" android:layout_width="0dp" android:layout_weight="2" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <TextView android:text="CREATE CLONE" android:textColor="#9D7BFF" android:textStyle="bold" android:paddingTop="16dp" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <EditText android:id="@+id/voiceName" android:hint="Voice name" android:textColor="#FFFFFF" android:textColorHint="#6F7683"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <TextView android:id="@+id/refCount" android:text="0 reference clips" android:textColor="#AEB4C0" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/pickRefs" android:text="IMPORT" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <Button android:id="@+id/recordRef" android:text="RECORD" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <Button android:id="@+id/clearRefs" android:text="CLEAR" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <Button android:id="@+id/clone" android:text="CREATE LOCAL VOICE PROFILE" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+        <TextView android:text="SYNTHESIZE" android:textColor="#9D7BFF" android:textStyle="bold" android:paddingTop="16dp" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Spinner android:id="@+id/voiceSpinner" android:layout_width="0dp" android:layout_weight="3" android:layout_height="wrap_content" />
+            <Button android:id="@+id/deleteVoice" android:text="DELETE" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <EditText android:id="@+id/text" android:hint="Text to speak" android:textColor="#FFFFFF" android:textColorHint="#6F7683" android:gravity="top"
+            android:minLines="4" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <Spinner android:id="@+id/preset" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <EditText android:id="@+id/candidates" android:hint="Candidates" android:text="" android:textColor="#FFFFFF" android:textColorHint="#6F7683" android:inputType="number"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <EditText android:id="@+id/seed" android:hint="Seed (optional)" android:textColor="#FFFFFF" android:textColorHint="#6F7683" android:inputType="numberSigned"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <EditText android:id="@+id/temperature" android:hint="Temperature" android:text="0.8" android:textColor="#FFFFFF" android:textColorHint="#6F7683" android:inputType="numberDecimal"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <EditText android:id="@+id/topP" android:hint="Top-P" android:text="0.8" android:textColor="#FFFFFF" android:textColorHint="#6F7683" android:inputType="numberDecimal"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <Button android:id="@+id/generate" android:text="GENERATE BEST-RANKED TAKE" android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/play" android:text="PLAY" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <Button android:id="@+id/save" android:text="SAVE" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+            <Button android:id="@+id/share" android:text="SHARE" android:enabled="false" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" />
+        </LinearLayout>
+        <TextView android:id="@+id/status" android:text="Ready" android:textColor="#DCE1EA" android:textIsSelectable="true" android:paddingTop="12dp" android:paddingBottom="30dp"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+    </LinearLayout>
+</ScrollView>

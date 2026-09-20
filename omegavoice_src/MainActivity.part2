@@ -1,0 +1,160 @@
+    private void refreshVoices(final String base, final String keepVoice) {
+        io.execute(() -> {
+            try {
+                String r = HttpTools.getText(base + "/voices");
+                JSONObject j = new JSONObject(r);
+                JSONArray a = j.optJSONArray("voices");
+                ArrayList<String> found = new ArrayList<>();
+                if (a != null) {
+                    for (int i = 0; i < a.length(); i++) found.add(a.getJSONObject(i).getString("name"));
+                }
+                runOnUiThread(() -> {
+                    voices.clear();
+                    voices.addAll(found);
+                    setVoiceAdapter(keepVoice);
+                    status.setText(voices.isEmpty() ? "Engine connected • no voice profiles yet" : "Loaded " + voices.size() + " local voice profile(s)");
+                });
+            } catch (Exception e) {
+                setStatus("Voice refresh: " + friendlyError(e));
+            }
+        });
+    }
+
+    private void pickRefs() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        i.setType("audio/*");
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        i.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(i, PICK_REFS);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_REFS || resultCode != RESULT_OK || data == null) return;
+        if (data.getClipData() != null) {
+            for (int x = 0; x < data.getClipData().getItemCount(); x++) addRef(data.getClipData().getItemAt(x).getUri());
+        } else if (data.getData() != null) {
+            addRef(data.getData());
+        }
+        updateRefCount();
+        status.setText("References ready");
+    }
+
+    private void addRef(Uri uri) {
+        if (!refs.contains(uri)) refs.add(uri);
+        try { getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) {}
+    }
+
+    private void toggleRecording() {
+        if (recorder != null) { stopRecording(); return; }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC_PERMISSION);
+            return;
+        }
+        startRecording();
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == MIC_PERMISSION && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) startRecording();
+        else if (requestCode == MIC_PERMISSION) setStatus("Microphone permission is required to record a reference clip");
+    }
+
+    private void startRecording() {
+        try {
+            recordingFile = new File(getCacheDir(), "omega_ref_" + System.currentTimeMillis() + ".m4a");
+            recorder = Build.VERSION.SDK_INT >= 31 ? new MediaRecorder(this) : new MediaRecorder();
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+            recorder.setAudioEncodingBitRate(128000);
+            recorder.setAudioSamplingRate(44100);
+            recorder.setOutputFile(recordingFile.getAbsolutePath());
+            recorder.prepare();
+            recorder.start();
+            recordButton.setText("STOP");
+            status.setText("Recording reference… speak naturally");
+        } catch (Exception e) {
+            try { if (recorder != null) recorder.release(); } catch (Exception ignored) {}
+            recorder = null;
+            recordButton.setText("RECORD");
+            status.setText("Record error: " + e.getMessage());
+        }
+    }
+
+    private void stopRecording() {
+        boolean ok = true;
+        try { recorder.stop(); } catch (Exception ignored) { ok = false; }
+        try { recorder.release(); } catch (Exception ignored) {}
+        recorder = null;
+        recordButton.setText("RECORD");
+        if (ok && recordingFile != null && recordingFile.exists() && recordingFile.length() > 1000) {
+            refs.add(Uri.fromFile(recordingFile));
+            updateRefCount();
+            status.setText("Recorded reference added");
+        } else {
+            status.setText("Recording was too short. Record a longer reference.");
+        }
+    }
+
+    private void cloneVoice() {
+        final String name = voiceName.getText().toString().trim();
+        if (name.isEmpty()) { status.setText("Enter a voice name"); return; }
+        if (refs.isEmpty()) { status.setText("Import or record at least one reference clip"); return; }
+        final String base;
+        try { base = baseFromUi(); } catch (Exception e) { status.setText(e.getMessage()); return; }
+        final ArrayList<Uri> selectedRefs = new ArrayList<>(refs);
+        setBusy(true, "Extracting voice conditioning latents…");
+        io.execute(() -> {
+            try {
+                LinkedHashMap<String,String> f = new LinkedHashMap<>();
+                f.put("name", name);
+                HttpTools.postMultipartText(base + "/clone", f, selectedRefs, getContentResolver());
+                setStatus("Voice profile created: " + name);
+                refreshVoices(base, name);
+            } catch (Exception e) {
+                setStatus("Clone error: " + friendlyError(e));
+            } finally {
+                setBusy(false, null);
+            }
+        });
+    }
+
+    private void generate() {
+        Object selected = voiceSpinner.getSelectedItem();
+        if (selected == null) { status.setText("Create or refresh a voice first"); return; }
+        final String spoken = speechText.getText().toString().trim();
+        if (spoken.isEmpty()) { status.setText("Enter text to speak"); return; }
+        if (spoken.length() > 1200) { status.setText("Text is too long for one generation. Use a shorter paragraph."); return; }
+
+        final String v = selected.toString();
+        final String pr = String.valueOf(preset.getSelectedItem());
+        final String candidateValue = candidates.getText().toString().trim();
+        final String seedValue = seed.getText().toString().trim();
+        final String tempValue = temperature.getText().toString().trim().isEmpty() ? "0.8" : temperature.getText().toString().trim();
+        final String topPValue = topP.getText().toString().trim().isEmpty() ? "0.8" : topP.getText().toString().trim();
+        final String base;
+        try {
+            base = baseFromUi();
+            double t = Double.parseDouble(tempValue);
+            double p = Double.parseDouble(topPValue);
+            if (t <= 0 || t > 2.0) throw new IllegalArgumentException("Temperature should be > 0 and ≤ 2.0");
+            if (p <= 0 || p > 1.0) throw new IllegalArgumentException("Top-P should be > 0 and ≤ 1.0");
+            if (!candidateValue.isEmpty() && Integer.parseInt(candidateValue) < 1) throw new IllegalArgumentException("Candidates must be at least 1");
+            if (!seedValue.isEmpty()) Long.parseLong(seedValue);
+        } catch (Exception e) {
+            status.setText("Settings error: " + e.getMessage());
+            return;
+        }
+
+        setBusy(true, "Generating AR candidates → CLVP ranking → diffusion → vocoder…");
+        io.execute(() -> {
+            try {
+                LinkedHashMap<String,String> f = new LinkedHashMap<>();
+                f.put("voice", v);
+                f.put("text", spoken);
+                f.put("preset", pr);
+                f.put("returns", "1");
+                if (!candidateValue.isEmpty()) f.put("candidates", candidateValue);
+                if (!seedValue.isEmpty()) f.put("seed", seedValue);
+                f.put("temperature", tempValue);
