@@ -1,0 +1,110 @@
+name: OmegaVoice Native Qwen3 Build
+
+on:
+  push:
+    branches:
+      - build/omegavoice-native-qwen3-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Fetch pinned native Android engine
+        run: |
+          git clone --recursive https://github.com/Danmoreng/qwen3-tts-android.git OmegaVoiceNative
+          cd OmegaVoiceNative
+          git checkout 35738304b31c425cc08fb5405372fedfd6531b3b
+          git submodule sync --recursive
+          git submodule update --init --recursive --depth=1
+
+      - name: Apply OmegaVoice product patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('OmegaVoiceNative')
+
+          p = root/'app/build.gradle.kts'
+          s = p.read_text()
+          s = s.replace('applicationId = "com.qwen.tts.android"', 'applicationId = "com.omegavoice.native"')
+          s = s.replace('versionCode = 1', 'versionCode = 100')
+          s = s.replace('versionName = "0.1.0"', 'versionName = "1.0.0"')
+          p.write_text(s)
+
+          p = root/'app/src/main/res/values/strings.xml'
+          s = p.read_text().replace('<string name="app_name">Qwen3 TTS</string>', '<string name="app_name">OmegaVoice Native</string>')
+          p.write_text(s)
+
+          p = root/'settings.gradle.kts'
+          s = p.read_text().replace('rootProject.name = "Qwen3TtsAndroid"', 'rootProject.name = "OmegaVoiceNative"')
+          p.write_text(s)
+
+          p = root/'app/src/main/java/com/qwen/tts/android/MainActivity.kt'
+          s = p.read_text()
+          s = s.replace('Hello World from Qwen3 TTS running on Android on-device!', 'Type what you want the cloned voice to say.')
+          s = s.replace('Qwen3-TTS 0.6B Q4_K_M', 'OmegaVoice Native 0.6B Q4')
+          s = s.replace('Qwen3 TTS', 'OmegaVoice Native')
+          s = s.replace('Qwen TTS', 'OmegaVoice')
+          p.write_text(s)
+
+          # Keep original Kotlin/JNI namespaces untouched. Only applicationId/branding change,
+          # so native JNI symbol bindings stay byte-for-byte compatible.
+          PY
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare Android SDK and NDK
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build native arm64 APK with OpenMP
+        working-directory: OmegaVoiceNative
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon :app:assembleRelease -Pqwen.openmp=true
+
+      - name: Verify and package APK
+        env:
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        run: |
+          mkdir -p dist
+          APK="OmegaVoiceNative/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | tee dist/badging.txt
+          grep -q "package: name='com.omegavoice.native'" dist/badging.txt
+          cp "$APK" dist/OmegaVoice-Native-v1.0.0-arm64.apk
+          sha256sum dist/OmegaVoice-Native-v1.0.0-arm64.apk | tee dist/OmegaVoice-Native-v1.0.0-arm64.apk.sha256
+          ls -lh dist/
+
+      - name: Upload OmegaVoice Native
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmegaVoice-Native-v1.0.0
+          path: dist/*
+          retention-days: 30
