@@ -46,12 +46,12 @@ jobs:
         run: gradle -p ghostshot --no-daemon :app:assembleDebug
 
       - name: Rename APK
-        run: cp ghostshot/app/build/outputs/apk/debug/app-debug.apk GhostShotOmegaPlus-v1.3-debug.apk
+        run: cp ghostshot/app/build/outputs/apk/debug/app-debug.apk GhostShotOmegaPlus-v1.4-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: GhostShotOmegaPlus-APK
-          path: GhostShotOmegaPlus-v1.3-debug.apk
+          name: GhostShotOmegaPlus-v1.4-APK
+          path: GhostShotOmegaPlus-v1.4-debug.apk
           if-no-files-found: error
           retention-days: 14

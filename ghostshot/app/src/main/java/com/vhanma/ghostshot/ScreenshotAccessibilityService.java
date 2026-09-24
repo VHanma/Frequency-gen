@@ -140,7 +140,7 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         int legacy = p.getInt("alphaPct", 10);
         activeAlpha = clamp(p.getInt("activePct", legacy) / 100f, 0.02f, 0.70f);
         idleAlpha = clamp(p.getInt("idlePct", 0) / 100f, 0f, 0.20f);
-        bubbleSizeDp = clampInt(p.getInt("sizeDp", 24), 18, 56);
+        bubbleSizeDp = clampInt(p.getInt("sizeDp", 24), 18, 72);
         autoFade = p.getBoolean("autoFade", true);
         snapEdge = p.getBoolean("snapEdge", true);
         haptics = p.getBoolean("haptics", true);
@@ -169,6 +169,9 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
     private void refreshFromPrefs() {
         loadPrefs();
         configureServiceFlags();
+        if (bubble instanceof WidgetSkinView) {
+            ((WidgetSkinView) bubble).refreshSkin();
+        }
         if (bubble != null && bubbleLp != null && wm != null) {
             int px = dp(bubbleSizeDp);
             bubbleLp.width = px;
@@ -201,8 +204,7 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         if (wm == null || bubble != null) return;
         loadPrefs();
 
-        View dot = new View(this);
-        dot.setBackgroundResource(R.drawable.ghost_dot);
+        WidgetSkinView dot = new WidgetSkinView(this);
         dot.setAlpha(activeAlpha);
         dot.setContentDescription("GhostShot screenshot control. Tap to capture, double-tap for burst, drag to move, long-press for controls.");
 
@@ -384,9 +386,11 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         LinearLayout bottom = new LinearLayout(this);
         bottom.setOrientation(LinearLayout.HORIZONTAL);
         Button last = smallButton("Last");
+        Button skin = smallButton("Skin");
         Button settings = smallButton("Settings");
         Button close = smallButton("Close");
         bottom.addView(last);
+        bottom.addView(skin);
         bottom.addView(settings);
         bottom.addView(close);
 
@@ -397,6 +401,13 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         burst.setOnClickListener(v -> { removeMenu(); requestBurst(); });
         hide.setOnClickListener(v -> { removeMenu(); hideBubble(true); });
         last.setOnClickListener(v -> { removeMenu(); openLast(); scheduleIdleFade(); });
+        skin.setOnClickListener(v -> {
+            removeMenu();
+            Intent i = new Intent(this, WidgetSkinActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            startActivity(i);
+            scheduleIdleFade();
+        });
         settings.setOnClickListener(v -> {
             removeMenu();
             Intent i = new Intent(this, MainActivity.class);
@@ -421,7 +432,7 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         );
         menuLp.gravity = Gravity.TOP | Gravity.START;
         Rect bounds = wm.getCurrentWindowMetrics().getBounds();
-        int estimatedWidth = dp(220);
+        int estimatedWidth = dp(285);
         int estimatedHeight = dp(92);
         int desiredX = bubbleLp != null ? bubbleLp.x - dp(24) : dp(8);
         int desiredY = bubbleLp != null ? bubbleLp.y + dp(bubbleSizeDp + 6) : dp(210);
@@ -439,7 +450,7 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
         button.setMinWidth(0);
         button.setMinimumWidth(0);
         button.setMinHeight(dp(36));
-        button.setPadding(dp(9), 0, dp(9), 0);
+        button.setPadding(dp(8), 0, dp(8), 0);
         return button;
     }
 
@@ -562,6 +573,7 @@ public class ScreenshotAccessibilityService extends AccessibilityService {
             captureBusy = false;
             if (bubble != null && !getPrefs().getBoolean("hidden", false)) {
                 bubble.setVisibility(View.VISIBLE);
+                if (bubble instanceof WidgetSkinView) ((WidgetSkinView) bubble).refreshSkin();
                 setActiveVisual();
                 scheduleIdleFade();
             }

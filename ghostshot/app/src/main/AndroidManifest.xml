@@ -9,6 +9,10 @@
         android:theme="@style/AppTheme">
 
         <activity
+            android:name=".WidgetSkinActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
