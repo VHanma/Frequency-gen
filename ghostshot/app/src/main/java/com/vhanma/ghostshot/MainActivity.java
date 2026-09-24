@@ -24,10 +24,15 @@ public class MainActivity extends Activity {
     private static final String ACTION_HIDE = "com.vhanma.ghostshot.HIDE_BUBBLE";
     private static final String ACTION_RESET = "com.vhanma.ghostshot.RESET_BUBBLE";
     private static final String ACTION_CAPTURE = "com.vhanma.ghostshot.CAPTURE";
+    private static final String ACTION_BURST = "com.vhanma.ghostshot.BURST";
     private static final String ACTION_REFRESH = "com.vhanma.ghostshot.REFRESH";
+    private static final String ACTION_OPEN_LAST = "com.vhanma.ghostshot.OPEN_LAST";
+    private static final String ACTION_SHARE_LAST = "com.vhanma.ghostshot.SHARE_LAST";
+    private static final String ACTION_DELETE_LAST = "com.vhanma.ghostshot.DELETE_LAST";
 
     private SharedPreferences prefs;
     private TextView status;
+    private TextView stats;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +45,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshStatus();
+        refreshStats();
     }
 
     private View buildUi() {
@@ -54,20 +60,25 @@ public class MainActivity extends Activity {
         root.setPadding(pad, pad, pad, dp(34));
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        TextView title = text("GhostShot Omega", 27, Color.WHITE, Gravity.CENTER);
+        TextView title = text("GhostShot Omega+", 28, Color.WHITE, Gravity.CENTER);
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         status = text("", 14, Color.LTGRAY, Gravity.CENTER);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
-        statusLp.setMargins(0, dp(6), 0, dp(12));
+        statusLp.setMargins(0, dp(6), 0, dp(5));
         root.addView(status, statusLp);
 
+        stats = text("", 13, Color.GRAY, Gravity.CENTER);
+        LinearLayout.LayoutParams statsLp = new LinearLayout.LayoutParams(-1, -2);
+        statsLp.setMargins(0, 0, 0, dp(12));
+        root.addView(stats, statsLp);
+
         TextView info = text(
-                "Tap = screenshot   •   Drag = move   •   Long-press = controls\n" +
-                "The dot removes itself from the frame before Android captures the screen.",
-                15, Color.LTGRAY, Gravity.CENTER);
+                "Tap = shot   •   Double-tap = burst   •   Drag = move   •   Long-press = controls\n" +
+                "The control removes itself before each frame is captured.",
+                14, Color.LTGRAY, Gravity.CENTER);
         LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(-1, -2);
-        infoLp.setMargins(0, 0, 0, dp(16));
+        infoLp.setMargins(0, 0, 0, dp(14));
         root.addView(info, infoLp);
 
         Button enable = button("Enable screenshot access");
@@ -77,23 +88,40 @@ public class MainActivity extends Activity {
         });
         root.addView(enable, fullButtonLp());
 
-        LinearLayout quick = new LinearLayout(this);
-        quick.setOrientation(LinearLayout.HORIZONTAL);
-        quick.setGravity(Gravity.CENTER);
+        LinearLayout quick = row();
         Button show = button("Show");
         Button hide = button("Hide");
-        Button capture = button("Capture now");
+        Button capture = button("Shot");
+        Button burst = button("Burst");
         quick.addView(show, weightLp());
         quick.addView(hide, weightLp());
         quick.addView(capture, weightLp());
+        quick.addView(burst, weightLp());
         show.setOnClickListener(v -> send(ACTION_SHOW));
         hide.setOnClickListener(v -> send(ACTION_HIDE));
         capture.setOnClickListener(v -> send(ACTION_CAPTURE));
+        burst.setOnClickListener(v -> send(ACTION_BURST));
         root.addView(quick, new LinearLayout.LayoutParams(-1, -2));
 
-        Button reset = button("Reset floating button position");
+        Button reset = button("Reset floating control position");
         reset.setOnClickListener(v -> send(ACTION_RESET));
         root.addView(reset, fullButtonLp());
+
+        root.addView(section("LAST SHOT"));
+        LinearLayout lastRow = row();
+        Button open = button("Open");
+        Button share = button("Share");
+        Button delete = button("Delete");
+        lastRow.addView(open, weightLp());
+        lastRow.addView(share, weightLp());
+        lastRow.addView(delete, weightLp());
+        open.setOnClickListener(v -> send(ACTION_OPEN_LAST));
+        share.setOnClickListener(v -> send(ACTION_SHARE_LAST));
+        delete.setOnClickListener(v -> {
+            send(ACTION_DELETE_LAST);
+            stats.postDelayed(this::refreshStats, 250);
+        });
+        root.addView(lastRow, new LinearLayout.LayoutParams(-1, -2));
 
         root.addView(section("STEALTH"));
 
@@ -108,7 +136,7 @@ public class MainActivity extends Activity {
         }, 2));
         root.addView(active, new LinearLayout.LayoutParams(-1, -2));
 
-        int idlePct = prefs.getInt("idlePct", 1);
+        int idlePct = prefs.getInt("idlePct", 0);
         TextView idleLabel = label("Idle visibility: " + idlePct + "%");
         root.addView(idleLabel);
         SeekBar idle = seek(0, 20, idlePct);
@@ -130,7 +158,7 @@ public class MainActivity extends Activity {
         int sizeDp = prefs.getInt("sizeDp", 24);
         TextView sizeLabel = label("Touch target size: " + sizeDp + " dp");
         root.addView(sizeLabel);
-        SeekBar size = seek(18, 48, sizeDp);
+        SeekBar size = seek(18, 56, sizeDp);
         size.setOnSeekBarChangeListener(listener(value -> {
             prefs.edit().putInt("sizeDp", value).apply();
             sizeLabel.setText("Touch target size: " + value + " dp");
@@ -138,7 +166,49 @@ public class MainActivity extends Activity {
         }, 18));
         root.addView(size, new LinearLayout.LayoutParams(-1, -2));
 
-        root.addView(section("CAPTURE"));
+        root.addView(section("CAPTURE ENGINE"));
+
+        CheckBox doubleTap = check("Double-tap control = burst", prefs.getBoolean("doubleTapBurst", true));
+        doubleTap.setOnCheckedChangeListener((b, checked) -> saveBool("doubleTapBurst", checked));
+        root.addView(doubleTap);
+
+        int burstCount = prefs.getInt("burstCount", 3);
+        TextView burstCountLabel = label("Burst frames: " + burstCount);
+        root.addView(burstCountLabel);
+        SeekBar burstCountBar = seek(2, 5, burstCount);
+        burstCountBar.setOnSeekBarChangeListener(listener(value -> {
+            prefs.edit().putInt("burstCount", value).apply();
+            burstCountLabel.setText("Burst frames: " + value);
+            refreshService();
+        }, 2));
+        root.addView(burstCountBar, new LinearLayout.LayoutParams(-1, -2));
+
+        int intervalMs = prefs.getInt("burstIntervalMs", 650);
+        TextView intervalLabel = label("Burst spacing: " + intervalMs + " ms");
+        root.addView(intervalLabel);
+        SeekBar interval = seek(450, 1500, intervalMs);
+        interval.setOnSeekBarChangeListener(listener(value -> {
+            int snapped = 450 + Math.round((value - 450) / 50f) * 50;
+            prefs.edit().putInt("burstIntervalMs", snapped).apply();
+            intervalLabel.setText("Burst spacing: " + snapped + " ms");
+            refreshService();
+        }, 450));
+        root.addView(interval, new LinearLayout.LayoutParams(-1, -2));
+
+        int delaySec = prefs.getInt("delaySec", 0);
+        TextView delayLabel = label("Shot delay: " + delaySec + " s");
+        root.addView(delayLabel);
+        SeekBar delay = seek(0, 5, delaySec);
+        delay.setOnSeekBarChangeListener(listener(value -> {
+            prefs.edit().putInt("delaySec", value).apply();
+            delayLabel.setText("Shot delay: " + value + " s");
+            refreshService();
+        }, 0));
+        root.addView(delay, new LinearLayout.LayoutParams(-1, -2));
+
+        CheckBox volume = check("Double-press Volume Down = screenshot", prefs.getBoolean("volumeCapture", false));
+        volume.setOnCheckedChangeListener((b, checked) -> saveBool("volumeCapture", checked));
+        root.addView(volume);
 
         CheckBox haptics = check("Tiny vibration when a shot saves", prefs.getBoolean("haptics", true));
         haptics.setOnCheckedChangeListener((b, checked) -> saveBool("haptics", checked));
@@ -148,9 +218,13 @@ public class MainActivity extends Activity {
         silent.setOnCheckedChangeListener((b, checked) -> saveBool("silent", checked));
         root.addView(silent);
 
-        CheckBox hideAfter = check("Hide dot after every screenshot", prefs.getBoolean("hideAfter", false));
+        CheckBox hideAfter = check("Hide control after capture", prefs.getBoolean("hideAfter", false));
         hideAfter.setOnCheckedChangeListener((b, checked) -> saveBool("hideAfter", checked));
         root.addView(hideAfter);
+
+        CheckBox appName = check("Put current app name in screenshot filename", prefs.getBoolean("includeAppName", false));
+        appName.setOnCheckedChangeListener((b, checked) -> saveBool("includeAppName", checked));
+        root.addView(appName);
 
         TextView formatLabel = label("Image format");
         root.addView(formatLabel);
@@ -172,14 +246,27 @@ public class MainActivity extends Activity {
         });
         root.addView(format, new LinearLayout.LayoutParams(-1, dp(52)));
 
+        root.addView(section("QUICK SETTINGS TILE"));
+        TextView tile = text(
+                "Add “GhostShot” to Android Quick Settings. Tapping the tile captures instantly whenever screenshot access is enabled, even if the floating control is hidden.",
+                13, Color.GRAY, Gravity.START);
+        root.addView(tile, new LinearLayout.LayoutParams(-1, -2));
+
         TextView note = text(
-                "OMEGA GHOST MODE\nSet Idle visibility to 0% and leave Auto-fade on. The touch target remains active even when the dot is invisible. If you lose it, open this app and press Reset or Show.\n\nScreenshots save in Pictures/Screenshots. Secure Android windows can still block capture at the operating-system level.",
+                "OMEGA+ GHOST MODE\nIdle visibility 0% + Auto-fade ON leaves an invisible but tappable target. Reset recovers it if you forget where it is.\n\nShots save in Pictures/Screenshots. Secure Android windows can block capture at the operating-system level.",
                 13, Color.GRAY, Gravity.START);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
         noteLp.setMargins(0, dp(18), 0, 0);
         root.addView(note, noteLp);
 
         return scroll;
+    }
+
+    private void refreshStats() {
+        if (stats == null) return;
+        int count = prefs.getInt("shotCount", 0);
+        boolean hasLast = prefs.getString("lastUri", null) != null;
+        stats.setText(count + " shots saved" + (hasLast ? "   •   last shot ready" : ""));
     }
 
     private interface IntConsumer { void accept(int value); }
@@ -211,6 +298,13 @@ public class MainActivity extends Activity {
         return c;
     }
 
+    private LinearLayout row() {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER);
+        return r;
+    }
+
     private void saveBool(String key, boolean value) {
         prefs.edit().putBoolean(key, value).apply();
         refreshService();
@@ -222,8 +316,9 @@ public class MainActivity extends Activity {
 
     private void refreshStatus() {
         if (status == null) return;
-        status.setText(isServiceEnabled() ? "Screenshot access: ON" : "Screenshot access: OFF");
-        status.setTextColor(isServiceEnabled() ? Color.rgb(120, 230, 150) : Color.rgb(255, 150, 150));
+        boolean on = isServiceEnabled();
+        status.setText(on ? "Screenshot access: ON" : "Screenshot access: OFF");
+        status.setTextColor(on ? Color.rgb(120, 230, 150) : Color.rgb(255, 150, 150));
     }
 
     private boolean isServiceEnabled() {
@@ -267,7 +362,7 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(value);
         b.setAllCaps(false);
-        b.setTextSize(14);
+        b.setTextSize(13);
         b.setMinHeight(dp(46));
         return b;
     }
