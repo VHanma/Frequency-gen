@@ -34,10 +34,11 @@ jobs:
       - name: Package
         run: |
           mkdir -p artifact
-          cp frequencyscope/app/build/outputs/apk/debug/app-debug.apk artifact/FrequencyScope-v1.0.apk
-          sha256sum artifact/FrequencyScope-v1.0.apk > artifact/FrequencyScope-v1.0.apk.sha256
+          cp frequencyscope/app/build/outputs/apk/debug/app-debug.apk artifact/FrequencyScope-v2.0.apk
+          sha256sum artifact/FrequencyScope-v2.0.apk > artifact/FrequencyScope-v2.0.apk.sha256
+          zip -qr artifact/FrequencyScope-v2.0-source.zip frequencyscope
       - uses: actions/upload-artifact@v4
         with:
-          name: FrequencyScope-installable
+          name: FrequencyScope-v2.0-installable
           path: artifact/*
           if-no-files-found: error
