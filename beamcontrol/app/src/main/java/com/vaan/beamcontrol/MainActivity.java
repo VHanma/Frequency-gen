@@ -133,10 +133,10 @@ public class MainActivity extends Activity {
         });
         root.addView(toneButton);
 
-        Button lowTone = button("START 440 Hz TEST TONE");
+        Button lowTone = button("START 444 Hz TEST TONE");
         lowTone.setOnClickListener(v -> {
             stopTone();
-            startTone(440.0);
+            startTone(444.0);
         });
         root.addView(lowTone, lp(-1, dp(52), 0, 8, 0, 18));
 
