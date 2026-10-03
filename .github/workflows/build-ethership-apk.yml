@@ -48,12 +48,12 @@ jobs:
 
       - name: Rename APK
         shell: bash
-        run: cp EtherShip/app/build/outputs/apk/debug/app-debug.apk EtherShip-v1.3.apk
+        run: cp EtherShip/app/build/outputs/apk/debug/app-debug.apk EtherShip-v1.4.apk
 
       - name: Upload finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: EtherShip-v1.3-installable-apk
-          path: EtherShip-v1.3.apk
+          name: EtherShip-v1.4-installable-apk
+          path: EtherShip-v1.4.apk
           if-no-files-found: error
           retention-days: 14
