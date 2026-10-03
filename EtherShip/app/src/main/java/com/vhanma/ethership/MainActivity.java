@@ -127,13 +127,13 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Ether Ship • Bentov • The Nine • Orgone • Rife • frequency console");
+        sub.setText("Choose a system, choose what you want, choose your emitter, then press START");
         sub.setGravity(Gravity.CENTER);
         sub.setTextSize(14f);
         root.addView(sub);
 
         spacer(root, 14);
-        label(root, "SYSTEM");
+        label(root, "1. CHOOSE MACHINE");
         sectionSpinner = new Spinner(this);
         sectionSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item,
@@ -146,7 +146,7 @@ public class MainActivity extends Activity {
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        label(root, "PRESET BANK");
+        label(root, "2. CHOOSE PURPOSE");
         presetSpinner = new Spinner(this);
         root.addView(presetSpinner);
         presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
         root.addView(presetInfo);
 
         spacer(root, 10);
-        label(root, "EXTERNAL DEVICE / OUTPUT");
+        label(root, "3. CHOOSE OUTPUT DEVICE");
         outputSpinner = new Spinner(this);
         root.addView(outputSpinner);
         outputSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -176,7 +176,7 @@ public class MainActivity extends Activity {
         });
 
         Button connect = new Button(this);
-        connect.setText("SCAN / CONNECT EXTERNAL DEVICE");
+        connect.setText("FIND MY ULTRASONIC EMITTER");
         connect.setOnClickListener(v -> {
             refreshAudioDevices();
             scanUsbDevices();
@@ -189,9 +189,9 @@ public class MainActivity extends Activity {
         root.addView(deviceReadout);
 
         spacer(root, 10);
-        label(root, "DIVINE / EXTERNAL WHOLE-FREQUENCY TARGET");
+        label(root, "EXACT HIGH FREQUENCY FOR YOUR EMITTER");
         wholeTargetModeCheck = new CheckBox(this);
-        wholeTargetModeCheck.setText("Keep primary RF target whole • no octave conversion");
+        wholeTargetModeCheck.setText("Use the exact listed high frequency");
         wholeTargetModeCheck.setChecked(true);
         wholeTargetModeCheck.setOnCheckedChangeListener((buttonView, isChecked) -> {
             wholeTargetMode = isChecked;
@@ -200,12 +200,12 @@ public class MainActivity extends Activity {
         root.addView(wholeTargetModeCheck);
 
         wholeTargetInput = new EditText(this);
-        wholeTargetInput.setHint("Exact target Hz, e.g. 98600000");
+        wholeTargetInput.setHint("Frequency in Hz, example: 98600000");
         wholeTargetInput.setSingleLine(true);
         root.addView(wholeTargetInput);
 
         Button loadWholeTarget = new Button(this);
-        loadWholeTarget.setText("LOAD WHOLE HARDWARE TARGET");
+        loadWholeTarget.setText("USE THIS EXACT FREQUENCY");
         loadWholeTarget.setOnClickListener(v -> {
             try {
                 double f = Double.parseDouble(wholeTargetInput.getText().toString().trim());
@@ -225,13 +225,13 @@ public class MainActivity extends Activity {
         root.addView(wholeTargetReadout);
 
         spacer(root, 10);
-        label(root, "AUDIO FILE TRANSMISSION");
+        label(root, "4. ADD AN AUDIO FILE (OPTIONAL)");
         audioFileReadout = new TextView(this);
         audioFileReadout.setText("No audio file selected");
         root.addView(audioFileReadout);
 
         Button pickAudio = new Button(this);
-        pickAudio.setText("CHOOSE AUDIO FILE");
+        pickAudio.setText("PICK AUDIO FILE");
         pickAudio.setOnClickListener(v -> chooseAudioFile());
         root.addView(pickAudio);
 
@@ -239,8 +239,8 @@ public class MainActivity extends Activity {
         audioModeSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item,
                 new String[]{
-                        "Mix audio + selected frequencies",
-                        "Audio envelope modulates selected carriers"
+                        "Play my audio together with the frequencies",
+                        "Make my audio control the frequency strength"
                 }));
         root.addView(audioModeSpinner);
         audioModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -251,23 +251,39 @@ public class MainActivity extends Activity {
         });
 
         Button playAudio = new Button(this);
-        playAudio.setText("PLAY AUDIO FILE");
+        playAudio.setText("PLAY MY AUDIO");
         playAudio.setOnClickListener(v -> playSelectedAudio());
         root.addView(playAudio);
 
         Button stopAudioFile = new Button(this);
-        stopAudioFile.setText("STOP AUDIO FILE");
+        stopAudioFile.setText("STOP MY AUDIO");
         stopAudioFile.setOnClickListener(v -> stopMediaPlayer());
         root.addView(stopAudioFile);
 
         spacer(root, 10);
-        label(root, "MASTER GAIN");
+        Button advancedButton = new Button(this);
+        advancedButton.setText("SHOW ADVANCED OPTIONS");
+        root.addView(advancedButton);
+
+        LinearLayout advancedPanel = new LinearLayout(this);
+        advancedPanel.setOrientation(LinearLayout.VERTICAL);
+        advancedPanel.setVisibility(View.GONE);
+        root.addView(advancedPanel);
+
+        advancedButton.setOnClickListener(v -> {
+            boolean show = advancedPanel.getVisibility() != View.VISIBLE;
+            advancedPanel.setVisibility(show ? View.VISIBLE : View.GONE);
+            advancedButton.setText(show ? "HIDE ADVANCED OPTIONS" : "SHOW ADVANCED OPTIONS");
+        });
+
+        spacer(advancedPanel, 10);
+        label(advancedPanel, "OUTPUT STRENGTH");
         gainReadout = new TextView(this);
-        root.addView(gainReadout);
+        advancedPanel.addView(gainReadout);
         gainBar = new SeekBar(this);
         gainBar.setMax(100);
         gainBar.setProgress(18);
-        root.addView(gainBar);
+        advancedPanel.addView(gainBar);
         gainBar.setOnSeekBarChangeListener(new SimpleSeek() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 masterGain = progress / 100f;
@@ -276,13 +292,13 @@ public class MainActivity extends Activity {
         });
         gainReadout.setText("18%");
 
-        label(root, "MASTER AM / BRAINWAVE MODULATION");
+        label(advancedPanel, "PULSE SPEED (Hz)");
         modReadout = new TextView(this);
-        root.addView(modReadout);
+        advancedPanel.addView(modReadout);
         masterModBar = new SeekBar(this);
         masterModBar.setMax(400);
         masterModBar.setProgress(0);
-        root.addView(masterModBar);
+        advancedPanel.addView(masterModBar);
         masterModBar.setOnSeekBarChangeListener(new SimpleSeek() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 masterModRate = progress / 10f;
@@ -291,14 +307,14 @@ public class MainActivity extends Activity {
         });
         modReadout.setText("0.0 Hz");
 
-        spacer(root, 10);
-        label(root, "20-OCTAVE CONTROL");
+        spacer(advancedPanel, 10);
+        label(advancedPanel, "MANUAL FREQUENCY SLIDER");
         octaveReadout = new TextView(this);
-        root.addView(octaveReadout);
+        advancedPanel.addView(octaveReadout);
         octaveBar = new SeekBar(this);
         octaveBar.setMax(2000);
         octaveBar.setProgress(1344);
-        root.addView(octaveBar);
+        advancedPanel.addView(octaveBar);
         octaveBar.setOnSeekBarChangeListener(new SimpleSeek() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 double octaves = progress / 100.0;
@@ -307,44 +323,44 @@ public class MainActivity extends Activity {
             }
         });
         manualToneCheck = new CheckBox(this);
-        manualToneCheck.setText("Mix 20-octave control tone into output");
+        manualToneCheck.setText("Add the manual frequency to the output");
         manualToneCheck.setOnCheckedChangeListener((buttonView, isChecked) -> manualToneEnabled = isChecked);
-        root.addView(manualToneCheck);
+        advancedPanel.addView(manualToneCheck);
 
-        spacer(root, 10);
-        label(root, "CUSTOM FREQUENCY MIX");
+        spacer(advancedPanel, 10);
+        label(advancedPanel, "TYPE YOUR OWN FREQUENCIES");
         customFreqs = new EditText(this);
         customFreqs.setHint("Example: 444, 888, 1776, 19200");
         customFreqs.setSingleLine(false);
-        root.addView(customFreqs);
+        advancedPanel.addView(customFreqs);
 
         Button applyCustom = new Button(this);
-        applyCustom.setText("LOAD CUSTOM MIX");
+        applyCustom.setText("USE THESE FREQUENCIES");
         applyCustom.setOnClickListener(v -> loadCustomMix());
-        root.addView(applyCustom);
+        advancedPanel.addView(applyCustom);
 
-        spacer(root, 14);
-        label(root, "RIFE FULL DATABASE");
+        spacer(advancedPanel, 14);
+        label(advancedPanel, "RIFE FREQUENCY LIBRARY");
         rifeDbReadout = new TextView(this);
         rifeDbReadout.setText("CAFL database not loaded yet");
-        root.addView(rifeDbReadout);
+        advancedPanel.addView(rifeDbReadout);
 
         Button syncRife = new Button(this);
-        syncRife.setText("SYNC FULL CAFL FREQUENCY BANK");
+        syncRife.setText("DOWNLOAD RIFE LIBRARY");
         syncRife.setOnClickListener(v -> syncCafl());
-        root.addView(syncRife);
+        advancedPanel.addView(syncRife);
 
         rifeSearch = new EditText(this);
-        rifeSearch.setHint("Search Rife/CAFL entry");
-        root.addView(rifeSearch);
+        rifeSearch.setHint("Search the Rife library");
+        advancedPanel.addView(rifeSearch);
 
         Button searchRife = new Button(this);
-        searchRife.setText("SEARCH RIFE BANK");
+        searchRife.setText("SEARCH RIFE LIBRARY");
         searchRife.setOnClickListener(v -> searchRife());
-        root.addView(searchRife);
+        advancedPanel.addView(searchRife);
 
         rifeResultsSpinner = new Spinner(this);
-        root.addView(rifeResultsSpinner);
+        advancedPanel.addView(rifeResultsSpinner);
         rifeResultsSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 showRifeResult(position);
@@ -354,12 +370,12 @@ public class MainActivity extends Activity {
 
         rifeSelectedReadout = new TextView(this);
         rifeSelectedReadout.setTextSize(12f);
-        root.addView(rifeSelectedReadout);
+        advancedPanel.addView(rifeSelectedReadout);
 
         Button loadRife = new Button(this);
-        loadRife.setText("LOAD SELECTED RIFE SET");
+        loadRife.setText("USE SELECTED RIFE FREQUENCIES");
         loadRife.setOnClickListener(v -> loadSelectedRifeSet());
-        root.addView(loadRife);
+        advancedPanel.addView(loadRife);
 
         TextView rifeRfNote = new TextView(this);
         rifeRfNote.setText(
@@ -370,20 +386,20 @@ public class MainActivity extends Activity {
         );
         rifeRfNote.setTextSize(12f);
         rifeRfNote.setPadding(0, dp(8), 0, dp(8));
-        root.addView(rifeRfNote);
+        advancedPanel.addView(rifeRfNote);
 
         spacer(root, 14);
         Button startStop = new Button(this);
-        startStop.setText("START TRANSMISSION");
+        startStop.setText("START OUTPUT");
         startStop.setTextSize(18f);
         root.addView(startStop);
         startStop.setOnClickListener(v -> {
             if (running) {
                 stopSynth();
-                startStop.setText("START TRANSMISSION");
+                startStop.setText("START OUTPUT");
             } else {
                 startSynth();
-                startStop.setText("STOP TRANSMISSION");
+                startStop.setText("STOP OUTPUT");
             }
         });
 
@@ -712,14 +728,14 @@ public class MainActivity extends Activity {
         }
 
         if (!hardwareTargets.isEmpty()) {
-            b.append("\n\nPRIMARY HARDWARE TARGET");
+            b.append("\n\nEXACT HIGH FREQUENCY FOR EMITTER");
             for (double f : hardwareTargets) {
                 b.append("\n• ").append(formatFrequency(f)).append(" • WHOLE / NO DOWNCONVERSION");
             }
         }
 
         if (!pcmTargets.isEmpty()) {
-            b.append("\n\nPCM / MODULATION SUPPORT: ");
+            b.append("\n\nOTHER FREQUENCIES USED: ");
             for (int i = 0; i < pcmTargets.size(); i++) {
                 if (i > 0) b.append(", ");
                 b.append(formatFrequency(pcmTargets.get(i)));
@@ -900,10 +916,7 @@ public class MainActivity extends Activity {
             int preferred = 0;
             for (int i = 0; i < outputDevices.size(); i++) {
                 AudioDeviceInfo d = outputDevices.get(i);
-                if (d != null && (d.getType() == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                        d.getType() == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                        d.getType() == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                        d.getType() == AudioDeviceInfo.TYPE_LINE_ANALOG)) {
+                if (d != null && isUltrasonicEmitterType(d)) {
                     preferred = i;
                     break;
                 }
@@ -929,7 +942,7 @@ public class MainActivity extends Activity {
                 b.append(d.getProductName() == null ? d.getDeviceName() : d.getProductName());
                 b.append(" VID ").append(d.getVendorId()).append(" PID ").append(d.getProductId());
             }
-            b.append("\nIf it appears in OUTPUT DEVICE as USB DAC/headset, selecting it routes the signal directly to it.");
+            b.append("\nIf Android reports your emitter as a headset, EtherShip will still label it ULTRASONIC EMITTER.");
         }
         deviceReadout.setText(b.toString());
     }
@@ -937,13 +950,13 @@ public class MainActivity extends Activity {
     private void updateDeviceReadout() {
         if (deviceReadout == null) return;
         if (selectedDevice == null) {
-            deviceReadout.setText("Using Android system default output");
+            deviceReadout.setText("Connected to: PHONE DEFAULT OUTPUT");
             return;
         }
-        StringBuilder b = new StringBuilder(deviceName(selectedDevice));
+        StringBuilder b = new StringBuilder("Connected to: ").append(deviceName(selectedDevice));
         int[] rates = selectedDevice.getSampleRates();
         if (rates != null && rates.length > 0) {
-            b.append("\nAdvertised sample rates: ");
+            b.append("\nDevice sample rates: ");
             for (int i = 0; i < rates.length; i++) {
                 if (i > 0) b.append(", ");
                 b.append(rates[i]);
@@ -952,20 +965,33 @@ public class MainActivity extends Activity {
         deviceReadout.setText(b.toString());
     }
 
+    private boolean isUltrasonicEmitterType(AudioDeviceInfo d) {
+        if (d == null) return false;
+        int t = d.getType();
+        return t == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                t == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                t == AudioDeviceInfo.TYPE_USB_ACCESSORY ||
+                t == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                t == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                t == AudioDeviceInfo.TYPE_LINE_ANALOG;
+    }
+
     private String deviceName(AudioDeviceInfo d) {
-        if (d == null) return "System default output";
+        if (d == null) return "PHONE DEFAULT OUTPUT";
         String product = String.valueOf(d.getProductName());
-        String type;
-        switch (d.getType()) {
-            case AudioDeviceInfo.TYPE_USB_DEVICE: type = "USB DAC"; break;
-            case AudioDeviceInfo.TYPE_USB_HEADSET: type = "USB headset"; break;
-            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES: type = "Wired headphones"; break;
-            case AudioDeviceInfo.TYPE_LINE_ANALOG: type = "Analog line"; break;
-            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP: type = "Bluetooth A2DP"; break;
-            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER: type = "Built-in speaker"; break;
-            default: type = "Output type " + d.getType();
+
+        if (isUltrasonicEmitterType(d)) {
+            return "ULTRASONIC EMITTER • " + product;
         }
-        return product + " • " + type;
+
+        switch (d.getType()) {
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
+                return "PHONE SPEAKER";
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return "BLUETOOTH AUDIO • " + product;
+            default:
+                return "OTHER PHONE OUTPUT • " + product;
+        }
     }
 
     private void loadCachedCafl() {
