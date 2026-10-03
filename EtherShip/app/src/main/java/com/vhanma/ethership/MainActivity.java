@@ -71,13 +71,16 @@ public class MainActivity extends Activity {
     private TextView deviceReadout;
     private TextView rifeDbReadout;
     private TextView rifeSelectedReadout;
+    private TextView wholeTargetReadout;
 
     private EditText customFreqs;
     private EditText rifeSearch;
+    private EditText wholeTargetInput;
     private SeekBar gainBar;
     private SeekBar masterModBar;
     private SeekBar octaveBar;
     private CheckBox manualToneCheck;
+    private CheckBox wholeTargetModeCheck;
 
     private volatile Preset activePreset;
     private volatile boolean running = false;
@@ -87,6 +90,8 @@ public class MainActivity extends Activity {
     private volatile boolean manualToneEnabled = false;
     private volatile float externalAudioEnvelope = 1.0f;
     private volatile int audioFileMode = 0; // 0 mix, 1 envelope-modulate carriers
+    private volatile double wholeHardwareTargetHz = 0.0;
+    private volatile boolean wholeTargetMode = true;
 
     private AudioTrack audioTrack;
     private Thread audioThread;
@@ -182,6 +187,42 @@ public class MainActivity extends Activity {
         deviceReadout.setTextSize(12f);
         deviceReadout.setPadding(0, dp(6), 0, dp(6));
         root.addView(deviceReadout);
+
+        spacer(root, 10);
+        label(root, "DIVINE / EXTERNAL WHOLE-FREQUENCY TARGET");
+        wholeTargetModeCheck = new CheckBox(this);
+        wholeTargetModeCheck.setText("Keep primary RF target whole • no octave conversion");
+        wholeTargetModeCheck.setChecked(true);
+        wholeTargetModeCheck.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            wholeTargetMode = isChecked;
+            updateWholeTargetReadout();
+        });
+        root.addView(wholeTargetModeCheck);
+
+        wholeTargetInput = new EditText(this);
+        wholeTargetInput.setHint("Exact target Hz, e.g. 98600000");
+        wholeTargetInput.setSingleLine(true);
+        root.addView(wholeTargetInput);
+
+        Button loadWholeTarget = new Button(this);
+        loadWholeTarget.setText("LOAD WHOLE HARDWARE TARGET");
+        loadWholeTarget.setOnClickListener(v -> {
+            try {
+                double f = Double.parseDouble(wholeTargetInput.getText().toString().trim());
+                if (f > 0) {
+                    wholeHardwareTargetHz = f;
+                    updateWholeTargetReadout();
+                }
+            } catch (Exception e) {
+                wholeTargetReadout.setText("Enter a numeric frequency in Hz");
+            }
+        });
+        root.addView(loadWholeTarget);
+
+        wholeTargetReadout = new TextView(this);
+        wholeTargetReadout.setTextSize(13f);
+        wholeTargetReadout.setPadding(0, dp(6), 0, dp(8));
+        root.addView(wholeTargetReadout);
 
         spacer(root, 10);
         label(root, "AUDIO FILE TRANSMISSION");
@@ -360,7 +401,7 @@ public class MainActivity extends Activity {
                 "color-linked sound control, magnetic and laser thought tunnels, crystal projection, 24-channel EQ and a " +
                 "20-octave control system, but do not publish a fixed archival Hz table for telepathy or ET contact.\n\n" +
                 "BENTOV: primary-text values include body micromotion at 6.8–7.5 Hz, about 7.5 Hz for the Earth-ionosphere cavity in Bentov's model, about 7 Hz for whole-body resonance, 264/396/528 Hz as a harmonic example, and explicit beat examples of 50+60 and 10+12 Hz.\n\n" +
-                "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. That value is preserved whole as a primary external-hardware target. No octave-downconversion is used as a substitute. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's 8 Hz and 7.83 Hz ELF work is kept as support/modulation rather than mislabeled as the 98.6 MHz carrier itself.\n\n" +
+                "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. That value is preserved whole as a primary external-hardware target. No octave-downconversion is used as a substitute. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's later source values 6 Hz, 6.66 Hz, 7.83 Hz, 8 Hz, 10.80 Hz and 11 Hz are kept as a separate ELF/psi layer rather than mislabeled as the 98.6 MHz carrier itself.\n\n" +
                 "ORGONE: Reich's original accumulator was a passive accumulator, not a fixed-Hz tone generator. " +
                 "The Orgone presets here reproduce frequencies published by later pulsed-orgone generator traditions.\n\n" +
                 "RIFE: historical RF references, CAFL labels and later frequency lists are preserved as experimental/archive data. " +
@@ -499,14 +540,26 @@ public class MainActivity extends Activity {
                 }, 0.10f));
 
         ninePresets.add(new Preset(
+                "Puharich PSI / ELF Exact Set • SOURCE VALUES",
+                "Puharich's published ELF material repeatedly names 6 Hz, 6.66 Hz, 7.83 Hz, 8 Hz, 10.80 Hz and 11 Hz. This preset preserves those values exactly as a source bank.",
+                new Osc[]{
+                        s(6.0, .08, -0.9),
+                        s(6.66, .08, -0.6),
+                        s(7.83, .10, -0.3),
+                        s(8.0, .12, 0.0),
+                        s(10.80, .08, 0.4),
+                        s(11.0, .08, 0.8)
+                }, 0.15f));
+
+        ninePresets.add(new Preset(
                 "Puharich ELF Bridge • 8 Hz",
-                "Puharich later described 8 Hz as a universal ELF magnetic frequency associated in his experiments with healers and crystals. This is a Puharich bridge preset, not a direct statement from The Nine transcript.",
+                "Puharich later described 8 Hz as a central ELF magnetic frequency associated in his experiments with psychics, healers and crystals. This is a Puharich bridge preset, not a direct statement from The Nine transcript.",
                 new Osc[]{
                         s(8.0, .08, 0.0),
-                        am(188.064575, .10, -0.7, 8.0, .65),
-                        am(376.129150, .10, -0.3, 8.0, .60),
-                        am(752.258301, .10, 0.3, 8.0, .55),
-                        am(1504.516602, .08, 0.7, 8.0, .50)
+                        am(444, .10, -0.7, 8.0, .65),
+                        am(888, .10, -0.3, 8.0, .60),
+                        am(1776, .10, 0.3, 8.0, .55),
+                        am(3552, .08, 0.7, 8.0, .50)
                 }, 0.17f));
 
         ninePresets.add(new Preset(
@@ -633,6 +686,16 @@ public class MainActivity extends Activity {
         activePreset = list.get(index);
         masterGain = activePreset.recommendedGain;
         if (gainBar != null) gainBar.setProgress(Math.round(masterGain * 100f));
+
+        double primary = 0.0;
+        for (Osc o : activePreset.oscs) {
+            if (o.freq >= 96000.0 && o.freq > primary) primary = o.freq;
+        }
+        if (primary > 0.0) {
+            wholeHardwareTargetHz = primary;
+            if (wholeTargetInput != null) wholeTargetInput.setText(trim(primary));
+        }
+        updateWholeTargetReadout();
         showPresetInfo(activePreset);
     }
 
@@ -664,6 +727,19 @@ public class MainActivity extends Activity {
         }
 
         presetInfo.setText(b.toString());
+    }
+
+    private void updateWholeTargetReadout() {
+        if (wholeTargetReadout == null) return;
+        if (wholeHardwareTargetHz <= 0.0) {
+            wholeTargetReadout.setText("No external RF target loaded");
+            return;
+        }
+        String mode = wholeTargetMode
+                ? "WHOLE • exact value preserved • no octave conversion"
+                : "reference only";
+        wholeTargetReadout.setText("PRIMARY EXTERNAL TARGET: " +
+                formatFrequency(wholeHardwareTargetHz) + "\n" + mode);
     }
 
     private void loadCustomMix() {
@@ -1094,7 +1170,13 @@ public class MainActivity extends Activity {
             audioThread.start();
 
             String route = selectedDevice == null ? "system default" : deviceName(selectedDevice);
-            status.setText("TRANSMITTING • " + sr + " Hz PCM • stereo • " + route);
+            if (wholeTargetMode && wholeHardwareTargetHz > sr * 0.49) {
+                status.setText("MODULATION ACTIVE • " + sr + " Hz PCM • " + route +
+                        "\nWHOLE EXTERNAL TARGET: " + formatFrequency(wholeHardwareTargetHz) +
+                        " • NOT OCTAVE-DIVIDED");
+            } else {
+                status.setText("TRANSMITTING • " + sr + " Hz PCM • stereo • " + route);
+            }
         } catch (Exception e) {
             status.setText("Audio start error: " + e.getMessage());
             stopSynth();
