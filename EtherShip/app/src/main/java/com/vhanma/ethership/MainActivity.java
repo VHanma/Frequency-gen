@@ -1,11 +1,19 @@
 package com.vhanma.ethership;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.media.MediaPlayer;
+import android.media.audiofx.Visualizer;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -20,26 +28,50 @@ import android.widget.SeekBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends Activity {
-    private static final int TARGET_SR = 96000;
     private static final double TWO_PI = Math.PI * 2.0;
+    private static final int REQUEST_AUDIO_FILE = 4401;
+    private static final int REQUEST_RECORD_AUDIO = 4402;
+    private static final String CAFL_URL =
+            "https://gist.githubusercontent.com/tmiland/a3ce588bcd65738d91b4/raw/acc20b9e600d6fb92915f758a379fbd4139b98ca/CAFL.txt";
 
-    private final List<Preset> presets = new ArrayList<>();
+    private final List<Preset> etherPresets = new ArrayList<>();
+    private final List<Preset> orgonePresets = new ArrayList<>();
+    private final List<Preset> rifePresets = new ArrayList<>();
     private final List<AudioDeviceInfo> outputDevices = new ArrayList<>();
+    private final List<RifeEntry> rifeEntries = new ArrayList<>();
+    private final List<RifeEntry> rifeSearchResults = new ArrayList<>();
 
+    private Spinner sectionSpinner;
     private Spinner presetSpinner;
     private Spinner outputSpinner;
+    private Spinner audioModeSpinner;
+    private Spinner rifeResultsSpinner;
+
     private TextView presetInfo;
     private TextView status;
     private TextView octaveReadout;
     private TextView gainReadout;
     private TextView modReadout;
-    private EditText customFreqs;
+    private TextView audioFileReadout;
+    private TextView deviceReadout;
+    private TextView rifeDbReadout;
+    private TextView rifeSelectedReadout;
 
+    private EditText customFreqs;
+    private EditText rifeSearch;
     private SeekBar gainBar;
     private SeekBar masterModBar;
     private SeekBar octaveBar;
@@ -51,10 +83,18 @@ public class MainActivity extends Activity {
     private volatile float masterModRate = 0.0f;
     private volatile double manualFreq = 444.0;
     private volatile boolean manualToneEnabled = false;
+    private volatile float externalAudioEnvelope = 1.0f;
+    private volatile int audioFileMode = 0; // 0 mix, 1 envelope-modulate carriers
 
     private AudioTrack audioTrack;
     private Thread audioThread;
     private AudioDeviceInfo selectedDevice;
+
+    private Uri selectedAudioUri;
+    private MediaPlayer mediaPlayer;
+    private Visualizer visualizer;
+
+    private int activeSection = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,7 +102,8 @@ public class MainActivity extends Activity {
         buildPresets();
         buildUi();
         refreshAudioDevices();
-        selectPreset(0);
+        loadCachedCafl();
+        selectSection(0);
     }
 
     private void buildUi() {
@@ -79,18 +120,27 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Magnetic Mind Generator • xenolinguistic frequency console");
+        sub.setText("Magnetic Mind Generator • Orgone • Rife • audio-frequency console");
         sub.setGravity(Gravity.CENTER);
         sub.setTextSize(14f);
         root.addView(sub);
 
         spacer(root, 14);
+        label(root, "SYSTEM");
+        sectionSpinner = new Spinner(this);
+        sectionSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                new String[]{"ETHER SHIP", "ORGONE", "RIFE"}));
+        root.addView(sectionSpinner);
+        sectionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectSection(position);
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
 
         label(root, "PRESET BANK");
         presetSpinner = new Spinner(this);
-        String[] names = new String[presets.size()];
-        for (int i = 0; i < presets.size(); i++) names[i] = presets.get(i).name;
-        presetSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
         root.addView(presetSpinner);
         presetSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -104,20 +154,68 @@ public class MainActivity extends Activity {
         presetInfo.setPadding(0, dp(8), 0, dp(8));
         root.addView(presetInfo);
 
-        label(root, "OUTPUT DEVICE");
+        spacer(root, 10);
+        label(root, "EXTERNAL DEVICE / OUTPUT");
         outputSpinner = new Spinner(this);
         root.addView(outputSpinner);
         outputSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < outputDevices.size()) selectedDevice = outputDevices.get(position);
+                if (position >= 0 && position < outputDevices.size()) {
+                    selectedDevice = outputDevices.get(position);
+                    updateDeviceReadout();
+                }
             }
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
 
-        Button refresh = new Button(this);
-        refresh.setText("REFRESH OUTPUTS");
-        refresh.setOnClickListener(v -> refreshAudioDevices());
-        root.addView(refresh);
+        Button connect = new Button(this);
+        connect.setText("SCAN / CONNECT EXTERNAL DEVICE");
+        connect.setOnClickListener(v -> {
+            refreshAudioDevices();
+            scanUsbDevices();
+        });
+        root.addView(connect);
+
+        deviceReadout = new TextView(this);
+        deviceReadout.setTextSize(12f);
+        deviceReadout.setPadding(0, dp(6), 0, dp(6));
+        root.addView(deviceReadout);
+
+        spacer(root, 10);
+        label(root, "AUDIO FILE TRANSMISSION");
+        audioFileReadout = new TextView(this);
+        audioFileReadout.setText("No audio file selected");
+        root.addView(audioFileReadout);
+
+        Button pickAudio = new Button(this);
+        pickAudio.setText("CHOOSE AUDIO FILE");
+        pickAudio.setOnClickListener(v -> chooseAudioFile());
+        root.addView(pickAudio);
+
+        audioModeSpinner = new Spinner(this);
+        audioModeSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item,
+                new String[]{
+                        "Mix audio + selected frequencies",
+                        "Audio envelope modulates selected carriers"
+                }));
+        root.addView(audioModeSpinner);
+        audioModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                audioFileMode = position;
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        Button playAudio = new Button(this);
+        playAudio.setText("PLAY AUDIO FILE");
+        playAudio.setOnClickListener(v -> playSelectedAudio());
+        root.addView(playAudio);
+
+        Button stopAudioFile = new Button(this);
+        stopAudioFile.setText("STOP AUDIO FILE");
+        stopAudioFile.setOnClickListener(v -> stopMediaPlayer());
+        root.addView(stopAudioFile);
 
         spacer(root, 10);
         label(root, "MASTER GAIN");
@@ -183,16 +281,65 @@ public class MainActivity extends Activity {
         root.addView(applyCustom);
 
         spacer(root, 14);
+        label(root, "RIFE FULL DATABASE");
+        rifeDbReadout = new TextView(this);
+        rifeDbReadout.setText("CAFL database not loaded yet");
+        root.addView(rifeDbReadout);
+
+        Button syncRife = new Button(this);
+        syncRife.setText("SYNC FULL CAFL FREQUENCY BANK");
+        syncRife.setOnClickListener(v -> syncCafl());
+        root.addView(syncRife);
+
+        rifeSearch = new EditText(this);
+        rifeSearch.setHint("Search Rife/CAFL entry");
+        root.addView(rifeSearch);
+
+        Button searchRife = new Button(this);
+        searchRife.setText("SEARCH RIFE BANK");
+        searchRife.setOnClickListener(v -> searchRife());
+        root.addView(searchRife);
+
+        rifeResultsSpinner = new Spinner(this);
+        root.addView(rifeResultsSpinner);
+        rifeResultsSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                showRifeResult(position);
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+
+        rifeSelectedReadout = new TextView(this);
+        rifeSelectedReadout.setTextSize(12f);
+        root.addView(rifeSelectedReadout);
+
+        Button loadRife = new Button(this);
+        loadRife.setText("LOAD SELECTED RIFE SET");
+        loadRife.setOnClickListener(v -> loadSelectedRifeSet());
+        root.addView(loadRife);
+
+        TextView rifeRfNote = new TextView(this);
+        rifeRfNote.setText(
+                "Historical Rife RF reference: surviving reconstructions place original high-RF work roughly " +
+                "from 139,200 Hz up to about 1,607,450 Hz, with later Beam Ray systems using RF carriers and sidebands. " +
+                "Those MHz-class values are kept as exact reference data. Phone PCM can only generate frequencies below " +
+                "half the active sample rate."
+        );
+        rifeRfNote.setTextSize(12f);
+        rifeRfNote.setPadding(0, dp(8), 0, dp(8));
+        root.addView(rifeRfNote);
+
+        spacer(root, 14);
         Button startStop = new Button(this);
         startStop.setText("START TRANSMISSION");
         startStop.setTextSize(18f);
         root.addView(startStop);
         startStop.setOnClickListener(v -> {
             if (running) {
-                stopAudio();
+                stopSynth();
                 startStop.setText("START TRANSMISSION");
             } else {
-                startAudio();
+                startSynth();
                 startStop.setText("STOP TRANSMISSION");
             }
         });
@@ -205,12 +352,15 @@ public class MainActivity extends Activity {
         spacer(root, 16);
         TextView notes = new TextView(this);
         notes.setText(
-                "ARCHIVE MODE\n" +
-                "The historically documented Ether Ship chain included a Synthi AKS, Hammond organ, " +
-                "brain-wave analyzer, color-linked sound control, magnetic/laser thought-tunnel concepts, " +
-                "a 24-channel equalizer, and a reported 20-octave control system. Exact Hz tables for named " +
-                "ESP/telekinesis functions are not present in the surviving public descriptions, so presets marked " +
-                "RECONSTRUCTION preserve the architecture and use editable frequency sets rather than claiming an archival setting."
+                "SOURCE LABELS\n" +
+                "ETHER SHIP: documented hardware architecture is separated from later/reconstructed frequency ideas. " +
+                "The surviving public Ether Ship descriptions document the Synthi AKS, Hammond organ, brain-wave analyzer, " +
+                "color-linked sound control, magnetic and laser thought tunnels, crystal projection, 24-channel EQ and a " +
+                "20-octave control system, but do not publish a fixed archival Hz table for telepathy or ET contact.\n\n" +
+                "ORGONE: Reich's original accumulator was a passive accumulator, not a fixed-Hz tone generator. " +
+                "The Orgone presets here reproduce frequencies published by later pulsed-orgone generator traditions.\n\n" +
+                "RIFE: historical RF references, CAFL labels and later frequency lists are preserved as experimental/archive data. " +
+                "The app does not claim that a listed frequency diagnoses or treats a medical condition."
         );
         notes.setTextSize(12f);
         root.addView(notes);
@@ -219,96 +369,128 @@ public class MainActivity extends Activity {
     }
 
     private void buildPresets() {
-        presets.add(new Preset(
+        etherPresets.add(new Preset(
                 "Ether Ship Core • DOCUMENTED ARCHITECTURE",
-                "Harmonic ladder + slow amplitude movement. Recreates the Synthi/Hammond-style layered control concept.",
+                "Harmonic ladder representing the layered Synthi/Hammond control concept. " +
+                        "No surviving public source gives one fixed archival Hz table for the 1970s machine.",
                 new Osc[]{
                         s(55, .18, -0.5), s(110, .16, 0.5), s(220, .13, -0.2),
-                        s(440, .12, 0.2), s(880, .08, -0.7), s(1760, .06, 0.7)
-                }, 0.33f));
+                        s(444, .12, 0.2), s(888, .08, -0.7), s(1776, .06, 0.7)
+                }, 0.30f));
 
-        presets.add(new Preset(
-                "Alien Communication • RECONSTRUCTION",
-                "444-derived harmonic beacon with sub-audio AM and ultrasonic extensions.",
-                new Osc[]{
-                        am(444, .16, -0.5, 7.83, .45), am(888, .12, 0.5, 7.83, .40),
-                        am(1776, .09, -0.2, 3.915, .35), am(3552, .07, 0.2, 1.9575, .30),
-                        am(7111, .05, -0.7, 7.83, .25), am(14222, .035, 0.7, 7.83, .20),
-                        am(28444, .02, 0.0, 3.915, .20)
-                }, 0.22f));
-
-        presets.add(new Preset(
-                "ESP / Telepathy • RECONSTRUCTION",
-                "Stacked carriers modulated in the 4–12 Hz band.",
-                new Osc[]{
-                        am(222, .13, -0.8, 7.0, .55), am(444, .14, 0.8, 7.0, .50),
-                        am(666, .10, -0.4, 10.0, .40), am(888, .09, 0.4, 10.0, .40),
-                        am(1776, .06, 0.0, 4.0, .35)
-                }, 0.26f));
-
-        presets.add(new Preset(
-                "Telekinesis • RECONSTRUCTION",
-                "Dense octave/power-of-two stack with phase-separated stereo movement.",
-                new Osc[]{
-                        am(33, .15, -1.0, 2.0, .35), am(66, .14, 1.0, 2.0, .35),
-                        am(132, .12, -0.6, 4.0, .40), am(264, .11, 0.6, 4.0, .40),
-                        am(528, .10, -0.3, 8.0, .30), am(1056, .08, 0.3, 8.0, .30),
-                        am(2112, .05, 0.0, 16.0, .25)
-                }, 0.23f));
-
-        presets.add(new Preset(
-                "Remote Viewing • RECONSTRUCTION",
-                "Low harmonic bed, 7 Hz and 10 Hz amplitude modulation, wide stereo image.",
-                new Osc[]{
-                        am(110, .16, -0.9, 7.0, .50), am(220, .14, 0.9, 7.0, .50),
-                        am(330, .10, -0.5, 10.0, .35), am(660, .08, 0.5, 10.0, .35),
-                        am(1320, .05, 0.0, 5.0, .30)
-                }, 0.25f));
-
-        presets.add(new Preset(
-                "Xenolinguistic Microtonal • RECONSTRUCTION",
-                "Non-12TET ratio lattice built around 444 Hz.",
-                new Osc[]{
-                        s(444, .13, -0.8), s(499.5, .11, 0.8), s(555, .10, -0.6),
-                        s(592, .09, 0.6), s(666, .08, -0.4), s(777, .07, 0.4),
-                        s(888, .06, -0.2), s(999, .05, 0.2), s(1110, .04, 0.0)
-                }, 0.18f));
-
-        presets.add(new Preset(
+        etherPresets.add(new Preset(
                 "Magnetic Mind Generator • RECONSTRUCTION",
-                "Slow FM + AM cross-coupling intended to feel like a continuously moving analog patch.",
+                "Slow FM + AM cross-coupling inspired by Van De Bogart's psychotronic description.",
                 new Osc[]{
                         fm(74, .14, -0.9, .17, 8), fm(148, .13, 0.9, .23, 12),
                         fm(296, .11, -0.5, .31, 16), fm(592, .09, 0.5, .41, 24),
                         fm(1184, .07, -0.2, .53, 32), fm(2368, .05, 0.2, .67, 48)
                 }, 0.20f));
 
-        presets.add(new Preset(
-                "Star Net ETI Transmission • RECONSTRUCTION",
-                "Stepped communication-style band from 400–1000 Hz with upper harmonic mirrors.",
+        etherPresets.add(new Preset(
+                "Schumann-linked Xenolinguistics • LATER METHOD",
+                "Later Van De Bogart writing explicitly links xenolinguistic work with Earth's Schumann resonance. " +
+                        "This preset uses the widely cited 7.83 Hz fundamental as AM over a 444-derived carrier lattice.",
                 new Osc[]{
-                        am(400, .10, -0.8, 1.0, .50), am(500, .10, 0.8, 1.0, .50),
-                        am(600, .09, -0.6, 2.0, .45), am(700, .09, 0.6, 2.0, .45),
-                        am(800, .08, -0.4, 4.0, .40), am(900, .08, 0.4, 4.0, .40),
-                        am(1000, .07, 0.0, 8.0, .35), s(8000, .03, -0.2), s(16000, .02, 0.2)
+                        am(444, .16, -0.6, 7.83, .50),
+                        am(888, .13, 0.6, 7.83, .45),
+                        am(1776, .10, -0.3, 7.83, .40),
+                        am(3552, .07, 0.3, 7.83, .35),
+                        am(7111, .04, 0.0, 7.83, .30)
+                }, 0.22f));
+
+        etherPresets.add(new Preset(
+                "Xenolinguistic Microtonal • RECONSTRUCTION",
+                "Non-12TET ratio lattice centered on 444 Hz for experimental symbolic/sonic language work.",
+                new Osc[]{
+                        s(444, .13, -0.8), s(499.5, .11, 0.8), s(555, .10, -0.6),
+                        s(592, .09, 0.6), s(666, .08, -0.4), s(777, .07, 0.4),
+                        s(888, .06, -0.2), s(999, .05, 0.2), s(1110, .04, 0.0)
                 }, 0.18f));
 
-        presets.add(new Preset(
+        etherPresets.add(new Preset(
                 "Ultrasonic Contact • EXPERIMENTAL",
-                "High-frequency carrier bank for external 96 kHz-capable DAC/transducer hardware.",
+                "High-frequency carrier bank for external high-sample-rate DAC/transducer hardware.",
                 new Osc[]{
-                        am(18000, .04, -0.9, 7.83, .40), am(19200, .035, 0.9, 7.83, .40),
-                        am(20000, .03, -0.6, 4.0, .30), am(22100, .027, 0.6, 4.0, .30),
-                        am(24000, .024, -0.3, 10.0, .25), am(28000, .020, 0.3, 10.0, .25),
+                        am(18000, .04, -0.9, 7.83, .40),
+                        am(19200, .035, 0.9, 7.83, .40),
+                        am(20000, .03, -0.6, 4.0, .30),
+                        am(22100, .027, 0.6, 4.0, .30),
+                        am(24000, .024, -0.3, 10.0, .25),
+                        am(28000, .020, 0.3, 10.0, .25),
                         am(32000, .016, 0.0, 2.0, .20)
                 }, 0.12f));
 
-        presets.add(new Preset(
+        etherPresets.add(new Preset(
                 "444 Calibration",
-                "Single clean 444 Hz reference with its first four octaves.",
+                "Clean 444 Hz reference and octaves.",
                 new Osc[]{
-                        s(444, .20, 0.0), s(888, .10, -0.4), s(1776, .06, 0.4), s(3552, .035, 0.0)
+                        s(444, .20, 0.0), s(888, .10, -0.4),
+                        s(1776, .06, 0.4), s(3552, .035, 0.0)
                 }, 0.20f));
+
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 3.5 Hz",
+                "Later pulsed-orgone tradition preset: 3.5 Hz modulation.",
+                new Osc[]{am(444, .16, 0, 3.5, .75), am(888, .08, 0, 3.5, .70)}, 0.18f));
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 6.3 Hz",
+                "Later pulsed-orgone tradition preset: 6.3 Hz modulation.",
+                new Osc[]{am(444, .16, 0, 6.3, .75), am(888, .08, 0, 6.3, .70)}, 0.18f));
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 7.0 Hz",
+                "Later pulsed-orgone tradition preset: 7.0 Hz modulation.",
+                new Osc[]{am(444, .16, 0, 7.0, .75), am(888, .08, 0, 7.0, .70)}, 0.18f));
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 7.83 Hz",
+                "Later pulsed-orgone tradition preset associated with the Schumann fundamental.",
+                new Osc[]{am(444, .16, 0, 7.83, .75), am(888, .08, 0, 7.83, .70)}, 0.18f));
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 10.0 Hz",
+                "Later pulsed-orgone tradition preset: 10.0 Hz modulation.",
+                new Osc[]{am(444, .16, 0, 10.0, .75), am(888, .08, 0, 10.0, .70)}, 0.18f));
+        orgonePresets.add(new Preset(
+                "Orgone Pulse • 14.1 Hz",
+                "Later pulsed-orgone tradition preset: 14.1 Hz modulation.",
+                new Osc[]{am(444, .16, 0, 14.1, .75), am(888, .08, 0, 14.1, .70)}, 0.18f));
+
+        rifePresets.add(new Preset(
+                "Rife Audio Core • LATER LIST",
+                "Common later Rife audio-frequency group preserved as experimental/archive data.",
+                new Osc[]{
+                        s(20, .10, -0.8), s(464, .10, -0.5), s(727, .10, -0.2),
+                        s(728, .10, 0.0), s(784, .10, 0.2), s(787, .10, 0.4),
+                        s(800, .08, 0.6), s(880, .08, 0.8), s(5000, .04, 0)
+                }, 0.16f));
+
+        rifePresets.add(new Preset(
+                "Rife Beam Ray Audio Sideband Drivers • HISTORICAL RECONSTRUCTION",
+                "Low/audio generator values in later Beam Ray reconstructions are sideband drivers, not the original RF MOR itself.",
+                new Osc[]{
+                        s(21275, .04, -0.7), s(20080, .04, 0.7),
+                        s(803, .08, -0.4), s(727, .08, 0.4),
+                        s(690, .08, 0.0)
+                }, 0.12f));
+
+        rifePresets.add(new Preset(
+                "Rife Sweep • 300–800 Hz EXPERIMENTAL",
+                "Dense research sweep-style bank across the 300–800 Hz region.",
+                makeRange(300, 800, 25), 0.10f));
+
+        rifePresets.add(new Preset(
+                "Rife Sweep • 2000–2600 Hz EXPERIMENTAL",
+                "Dense research sweep-style bank across the 2000–2600 Hz region.",
+                makeRange(2000, 2600, 25), 0.10f));
+    }
+
+    private Osc[] makeRange(int start, int end, int step) {
+        List<Osc> list = new ArrayList<>();
+        int count = Math.max(1, ((end - start) / step) + 1);
+        for (int f = start, i = 0; f <= end; f += step, i++) {
+            double pan = count <= 1 ? 0 : -1.0 + (2.0 * i / (count - 1.0));
+            list.add(s(f, 0.12 / Math.sqrt(count), pan));
+        }
+        return list.toArray(new Osc[0]);
     }
 
     private static Osc s(double f, double a, double p) {
@@ -323,20 +505,43 @@ public class MainActivity extends Activity {
         return new Osc(f, a, p, 0, 0, rate, depthHz);
     }
 
+    private List<Preset> currentPresets() {
+        if (activeSection == 1) return orgonePresets;
+        if (activeSection == 2) return rifePresets;
+        return etherPresets;
+    }
+
+    private void selectSection(int section) {
+        activeSection = Math.max(0, Math.min(2, section));
+        List<Preset> list = currentPresets();
+        String[] names = new String[list.size()];
+        for (int i = 0; i < list.size(); i++) names[i] = list.get(i).name;
+        presetSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, names));
+        if (!list.isEmpty()) {
+            presetSpinner.setSelection(0);
+            selectPreset(0);
+        }
+    }
+
     private void selectPreset(int index) {
-        if (index < 0 || index >= presets.size()) return;
-        activePreset = presets.get(index);
+        List<Preset> list = currentPresets();
+        if (index < 0 || index >= list.size()) return;
+        activePreset = list.get(index);
         masterGain = activePreset.recommendedGain;
         if (gainBar != null) gainBar.setProgress(Math.round(masterGain * 100f));
-        if (presetInfo != null) {
-            StringBuilder b = new StringBuilder();
-            b.append(activePreset.description).append("\n\nHz: ");
-            for (int i = 0; i < activePreset.oscs.length; i++) {
-                if (i > 0) b.append(", ");
-                b.append(trim(activePreset.oscs[i].freq));
-            }
-            presetInfo.setText(b.toString());
+        showPresetInfo(activePreset);
+    }
+
+    private void showPresetInfo(Preset p) {
+        if (p == null || presetInfo == null) return;
+        StringBuilder b = new StringBuilder();
+        b.append(p.description).append("\n\nHz: ");
+        for (int i = 0; i < p.oscs.length; i++) {
+            if (i > 0) b.append(", ");
+            b.append(trim(p.oscs[i].freq));
         }
+        presetInfo.setText(b.toString());
     }
 
     private void loadCustomMix() {
@@ -344,20 +549,137 @@ public class MainActivity extends Activity {
         if (raw.isEmpty()) return;
         String[] parts = raw.split("[,;\\s]+");
         List<Osc> list = new ArrayList<>();
-        for (int i = 0; i < parts.length && i < 24; i++) {
+        for (int i = 0; i < parts.length && i < 64; i++) {
             try {
                 double f = Double.parseDouble(parts[i]);
                 if (f > 0) {
                     double pan = parts.length <= 1 ? 0 : -1.0 + (2.0 * i / (parts.length - 1.0));
-                    list.add(s(f, Math.max(0.03, 0.22 / Math.max(1, parts.length)), pan));
+                    list.add(s(f, Math.max(0.015, 0.20 / Math.sqrt(Math.max(1, parts.length))), pan));
                 }
             } catch (Exception ignored) { }
         }
         if (list.isEmpty()) return;
-        activePreset = new Preset("Custom Mix", "Live custom frequency bank.", list.toArray(new Osc[0]), masterGain);
-        StringBuilder b = new StringBuilder("Custom frequencies loaded:\n");
-        for (Osc o : activePreset.oscs) b.append(trim(o.freq)).append(" Hz  ");
-        presetInfo.setText(b.toString());
+        activePreset = new Preset(
+                "Custom Mix",
+                "Live custom frequency bank.",
+                list.toArray(new Osc[0]),
+                masterGain);
+        showPresetInfo(activePreset);
+    }
+
+    private void chooseAudioFile() {
+        android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+        intent.setType("audio/*");
+        startActivityForResult(intent, REQUEST_AUDIO_FILE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_AUDIO_FILE && resultCode == RESULT_OK && data != null) {
+            selectedAudioUri = data.getData();
+            if (selectedAudioUri != null) {
+                try {
+                    getContentResolver().takePersistableUriPermission(
+                            selectedAudioUri,
+                            data.getFlags() & (android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                    android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION));
+                } catch (Exception ignored) { }
+                audioFileReadout.setText("Selected: " + selectedAudioUri.getLastPathSegment());
+            }
+        }
+    }
+
+    private void playSelectedAudio() {
+        if (selectedAudioUri == null) {
+            audioFileReadout.setText("Choose an audio file first");
+            return;
+        }
+        if (audioFileMode == 1 && Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
+            audioFileReadout.setText("Grant microphone/audio-capture permission, then tap PLAY AUDIO FILE again");
+            return;
+        }
+
+        stopMediaPlayer();
+        try {
+            mediaPlayer = new MediaPlayer();
+            AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+            mediaPlayer.setAudioAttributes(attrs);
+            if (selectedDevice != null) {
+                try { mediaPlayer.setPreferredDevice(selectedDevice); } catch (Exception ignored) { }
+            }
+            mediaPlayer.setDataSource(this, selectedAudioUri);
+            mediaPlayer.setOnPreparedListener(mp -> {
+                mp.start();
+                setupVisualizerIfNeeded();
+                audioFileReadout.setText("PLAYING • " + selectedAudioUri.getLastPathSegment());
+            });
+            mediaPlayer.setOnCompletionListener(mp -> {
+                externalAudioEnvelope = 1.0f;
+                disableVisualizer();
+                audioFileReadout.setText("Audio file finished");
+            });
+            mediaPlayer.prepareAsync();
+        } catch (Exception e) {
+            audioFileReadout.setText("Audio file error: " + e.getMessage());
+            stopMediaPlayer();
+        }
+    }
+
+    private void setupVisualizerIfNeeded() {
+        externalAudioEnvelope = 1.0f;
+        if (audioFileMode != 1 || mediaPlayer == null) return;
+        try {
+            visualizer = new Visualizer(mediaPlayer.getAudioSessionId());
+            int[] range = Visualizer.getCaptureSizeRange();
+            int size = Math.min(1024, range[1]);
+            size = Math.max(range[0], size);
+            visualizer.setCaptureSize(size);
+            visualizer.setDataCaptureListener(new Visualizer.OnDataCaptureListener() {
+                @Override public void onWaveFormDataCapture(Visualizer visualizer, byte[] waveform, int samplingRate) {
+                    if (waveform == null || waveform.length == 0) return;
+                    double sum = 0;
+                    for (byte b : waveform) {
+                        double v = ((b & 0xFF) - 128) / 128.0;
+                        sum += v * v;
+                    }
+                    double rms = Math.sqrt(sum / waveform.length);
+                    externalAudioEnvelope = (float) Math.max(0.04, Math.min(1.0, rms * 3.5));
+                }
+                @Override public void onFftDataCapture(Visualizer visualizer, byte[] fft, int samplingRate) { }
+            }, Visualizer.getMaxCaptureRate() / 2, true, false);
+            visualizer.setEnabled(true);
+        } catch (Exception e) {
+            externalAudioEnvelope = 1.0f;
+            audioFileReadout.setText("Audio playing • envelope capture unavailable: " + e.getMessage());
+        }
+    }
+
+    private void disableVisualizer() {
+        if (visualizer != null) {
+            try { visualizer.setEnabled(false); } catch (Exception ignored) { }
+            try { visualizer.release(); } catch (Exception ignored) { }
+            visualizer = null;
+        }
+    }
+
+    private void stopMediaPlayer() {
+        disableVisualizer();
+        externalAudioEnvelope = 1.0f;
+        if (mediaPlayer != null) {
+            try { mediaPlayer.stop(); } catch (Exception ignored) { }
+            try { mediaPlayer.release(); } catch (Exception ignored) { }
+            mediaPlayer = null;
+        }
+        if (audioFileReadout != null && selectedAudioUri != null) {
+            audioFileReadout.setText("Selected: " + selectedAudioUri.getLastPathSegment());
+        }
     }
 
     private void refreshAudioDevices() {
@@ -375,7 +697,8 @@ public class MainActivity extends Activity {
             outputDevices.add(null);
         }
         if (outputSpinner != null) {
-            outputSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels));
+            outputSpinner.setAdapter(new ArrayAdapter<>(this,
+                    android.R.layout.simple_spinner_dropdown_item, labels));
             int preferred = 0;
             for (int i = 0; i < outputDevices.size(); i++) {
                 AudioDeviceInfo d = outputDevices.get(i);
@@ -389,7 +712,46 @@ public class MainActivity extends Activity {
             }
             outputSpinner.setSelection(preferred);
             selectedDevice = outputDevices.get(preferred);
+            updateDeviceReadout();
         }
+    }
+
+    private void scanUsbDevices() {
+        UsbManager usbManager = (UsbManager) getSystemService(USB_SERVICE);
+        Map<String, UsbDevice> map = usbManager.getDeviceList();
+        StringBuilder b = new StringBuilder();
+        if (map.isEmpty()) {
+            b.append("No generic USB device detected. Android audio outputs above are still available.");
+        } else {
+            b.append("USB detected: ");
+            boolean first = true;
+            for (UsbDevice d : map.values()) {
+                if (!first) b.append(" | ");
+                first = false;
+                b.append(d.getProductName() == null ? d.getDeviceName() : d.getProductName());
+                b.append(" VID ").append(d.getVendorId()).append(" PID ").append(d.getProductId());
+            }
+            b.append("\nIf it appears in OUTPUT DEVICE as USB DAC/headset, selecting it routes the signal directly to it.");
+        }
+        deviceReadout.setText(b.toString());
+    }
+
+    private void updateDeviceReadout() {
+        if (deviceReadout == null) return;
+        if (selectedDevice == null) {
+            deviceReadout.setText("Using Android system default output");
+            return;
+        }
+        StringBuilder b = new StringBuilder(deviceName(selectedDevice));
+        int[] rates = selectedDevice.getSampleRates();
+        if (rates != null && rates.length > 0) {
+            b.append("\nAdvertised sample rates: ");
+            for (int i = 0; i < rates.length; i++) {
+                if (i > 0) b.append(", ");
+                b.append(rates[i]);
+            }
+        }
+        deviceReadout.setText(b.toString());
     }
 
     private String deviceName(AudioDeviceInfo d) {
@@ -408,8 +770,171 @@ public class MainActivity extends Activity {
         return product + " • " + type;
     }
 
-    private void startAudio() {
-        stopAudio();
+    private void loadCachedCafl() {
+        File f = new File(getFilesDir(), "cafl.txt");
+        if (!f.exists()) return;
+        new Thread(() -> {
+            try {
+                StringBuilder b = new StringBuilder();
+                BufferedReader r = new BufferedReader(new InputStreamReader(
+                        new java.io.FileInputStream(f), StandardCharsets.UTF_8));
+                String line;
+                while ((line = r.readLine()) != null) b.append(line).append('\n');
+                r.close();
+                parseCafl(b.toString());
+                runOnUiThread(() -> rifeDbReadout.setText(
+                        "CAFL cache loaded • " + rifeEntries.size() + " entries"));
+            } catch (Exception ignored) { }
+        }).start();
+    }
+
+    private void syncCafl() {
+        rifeDbReadout.setText("Downloading full CAFL bank…");
+        new Thread(() -> {
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(CAFL_URL).openConnection();
+                c.setConnectTimeout(15000);
+                c.setReadTimeout(20000);
+                c.setRequestProperty("User-Agent", "EtherShip-Android");
+                BufferedReader r = new BufferedReader(new InputStreamReader(
+                        c.getInputStream(), StandardCharsets.UTF_8));
+                StringBuilder b = new StringBuilder();
+                String line;
+                while ((line = r.readLine()) != null) b.append(line).append('\n');
+                r.close();
+                String text = b.toString();
+                FileOutputStream out = new FileOutputStream(new File(getFilesDir(), "cafl.txt"));
+                out.write(text.getBytes(StandardCharsets.UTF_8));
+                out.close();
+                parseCafl(text);
+                runOnUiThread(() -> rifeDbReadout.setText(
+                        "FULL CAFL LOADED • " + rifeEntries.size() + " entries • cached offline"));
+            } catch (Exception e) {
+                final String msg = e.getMessage();
+                runOnUiThread(() -> rifeDbReadout.setText("CAFL sync error: " + msg));
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        }).start();
+    }
+
+    private synchronized void parseCafl(String text) {
+        rifeEntries.clear();
+        if (text == null) return;
+        String[] lines = text.split("\\r?\\n");
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || !Character.isDigit(line.charAt(0))) continue;
+            String[] parts = line.split(";");
+            if (parts.length < 2) continue;
+
+            StringBuilder name = new StringBuilder();
+            List<Double> freqs = new ArrayList<>();
+            boolean frequencyStarted = false;
+
+            for (int i = 1; i < parts.length; i++) {
+                String token = parts[i].trim();
+                if (token.isEmpty()) continue;
+                Double f = parseFrequencyToken(token);
+                if (f != null) {
+                    frequencyStarted = true;
+                    if (f > 0) freqs.add(f);
+                } else if (!frequencyStarted) {
+                    if (name.length() > 0) name.append("; ");
+                    name.append(token);
+                }
+            }
+
+            if (name.length() == 0) name.append("CAFL ").append(parts[0].trim());
+            rifeEntries.add(new RifeEntry(name.toString(), freqs));
+        }
+    }
+
+    private Double parseFrequencyToken(String token) {
+        try {
+            String t = token.trim();
+            int eq = t.indexOf('=');
+            if (eq > 0) t = t.substring(0, eq).trim();
+            if (!t.matches("[-+]?\\d+(\\.\\d+)?")) return null;
+            return Double.parseDouble(t);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void searchRife() {
+        String q = rifeSearch.getText().toString().trim().toLowerCase(Locale.US);
+        rifeSearchResults.clear();
+        List<String> names = new ArrayList<>();
+        synchronized (this) {
+            for (RifeEntry e : rifeEntries) {
+                if (q.isEmpty() || e.name.toLowerCase(Locale.US).contains(q)) {
+                    rifeSearchResults.add(e);
+                    names.add(e.name);
+                    if (names.size() >= 100) break;
+                }
+            }
+        }
+        if (names.isEmpty()) names.add("No matches");
+        rifeResultsSpinner.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, names));
+        rifeResultsSpinner.setSelection(0);
+        showRifeResult(0);
+    }
+
+    private void showRifeResult(int position) {
+        if (rifeSearchResults.isEmpty() || position < 0 || position >= rifeSearchResults.size()) {
+            rifeSelectedReadout.setText("");
+            return;
+        }
+        RifeEntry e = rifeSearchResults.get(position);
+        StringBuilder b = new StringBuilder(e.name).append("\nHz: ");
+        for (int i = 0; i < e.freqs.size(); i++) {
+            if (i > 0) b.append(", ");
+            b.append(trim(e.freqs.get(i)));
+        }
+        rifeSelectedReadout.setText(b.toString());
+    }
+
+    private void loadSelectedRifeSet() {
+        int pos = rifeResultsSpinner.getSelectedItemPosition();
+        if (rifeSearchResults.isEmpty() || pos < 0 || pos >= rifeSearchResults.size()) return;
+        RifeEntry e = rifeSearchResults.get(pos);
+
+        List<Osc> oscs = new ArrayList<>();
+        int playable = 0;
+        int referenceOnly = 0;
+        for (int i = 0; i < e.freqs.size(); i++) {
+            double f = e.freqs.get(i);
+            if (f <= 86000 && playable < 64) {
+                double pan = e.freqs.size() <= 1 ? 0 : -1.0 + (2.0 * i / Math.max(1.0, e.freqs.size() - 1.0));
+                oscs.add(s(f, Math.max(0.012, 0.16 / Math.sqrt(Math.max(1, e.freqs.size()))), pan));
+                playable++;
+            } else {
+                referenceOnly++;
+            }
+        }
+
+        if (oscs.isEmpty()) {
+            presetInfo.setText(e.name + "\nNo frequencies in this set fit the app's PCM generation range. " +
+                    "The exact values remain visible as reference data.");
+            return;
+        }
+
+        activePreset = new Preset(
+                "CAFL • " + e.name,
+                "Loaded from the full CAFL archive. " + playable + " frequencies loaded for PCM output" +
+                        (referenceOnly > 0 ? "; " + referenceOnly + " higher values kept as reference only." : "."),
+                oscs.toArray(new Osc[0]),
+                0.12f);
+        masterGain = 0.12f;
+        gainBar.setProgress(12);
+        showPresetInfo(activePreset);
+    }
+
+    private void startSynth() {
+        stopSynth();
 
         int sr = chooseSampleRate();
         int min = AudioTrack.getMinBufferSize(sr,
@@ -445,18 +970,24 @@ public class MainActivity extends Activity {
             audioThread = new Thread(() -> renderLoop(finalSr), "EtherShipAudio");
             audioThread.setPriority(Thread.MAX_PRIORITY);
             audioThread.start();
-            status.setText("TRANSMITTING • " + sr + " Hz PCM • stereo");
+
+            String route = selectedDevice == null ? "system default" : deviceName(selectedDevice);
+            status.setText("TRANSMITTING • " + sr + " Hz PCM • stereo • " + route);
         } catch (Exception e) {
             status.setText("Audio start error: " + e.getMessage());
-            stopAudio();
+            stopSynth();
         }
     }
 
     private int chooseSampleRate() {
-        int test96 = AudioTrack.getMinBufferSize(TARGET_SR,
-                AudioFormat.CHANNEL_OUT_STEREO,
-                AudioFormat.ENCODING_PCM_16BIT);
-        return test96 > 0 ? TARGET_SR : 48000;
+        int[] candidates = new int[]{192000, 96000, 48000, 44100};
+        for (int sr : candidates) {
+            int test = AudioTrack.getMinBufferSize(sr,
+                    AudioFormat.CHANNEL_OUT_STEREO,
+                    AudioFormat.ENCODING_PCM_16BIT);
+            if (test > 0) return sr;
+        }
+        return 48000;
     }
 
     private void renderLoop(int sr) {
@@ -480,13 +1011,17 @@ public class MainActivity extends Activity {
                     masterEnv = 0.62 + 0.38 * Math.sin(masterPhase);
                 }
 
+                double fileEnv = (audioFileMode == 1 && mediaPlayer != null && mediaPlayer.isPlaying())
+                        ? externalAudioEnvelope : 1.0;
+
                 for (Osc o : p.oscs) {
-                    double f = Math.min(Math.max(0.01, o.freq), sr * 0.45);
+                    if (o.freq >= sr * 0.49) continue;
+                    double f = Math.max(0.01, o.freq);
                     if (o.fmRate > 0 && o.fmDepthHz > 0) {
                         o.fmPhase += TWO_PI * o.fmRate / sr;
                         if (o.fmPhase > TWO_PI) o.fmPhase -= TWO_PI;
                         f += Math.sin(o.fmPhase) * o.fmDepthHz;
-                        f = Math.min(Math.max(0.01, f), sr * 0.45);
+                        f = Math.min(Math.max(0.01, f), sr * 0.48);
                     }
 
                     o.phase += TWO_PI * f / sr;
@@ -496,18 +1031,20 @@ public class MainActivity extends Activity {
                     if (o.amRate > 0 && o.amDepth > 0) {
                         o.amPhase += TWO_PI * o.amRate / sr;
                         if (o.amPhase > TWO_PI) o.amPhase -= TWO_PI;
-                        amp *= (1.0 - o.amDepth) + o.amDepth * (0.5 + 0.5 * Math.sin(o.amPhase));
+                        amp *= (1.0 - o.amDepth) + o.amDepth *
+                                (0.5 + 0.5 * Math.sin(o.amPhase));
                     }
 
-                    double s = Math.sin(o.phase) * amp;
+                    amp *= fileEnv;
+                    double sample = Math.sin(o.phase) * amp;
                     double lGain = Math.sqrt((1.0 - o.pan) * 0.5);
                     double rGain = Math.sqrt((1.0 + o.pan) * 0.5);
-                    left += s * lGain;
-                    right += s * rGain;
+                    left += sample * lGain;
+                    right += sample * rGain;
                 }
 
-                if (manualToneEnabled) {
-                    double f = Math.min(Math.max(0.01, manualFreq), sr * 0.45);
+                if (manualToneEnabled && manualFreq < sr * 0.49) {
+                    double f = Math.max(0.01, manualFreq);
                     manualPhase += TWO_PI * f / sr;
                     if (manualPhase > TWO_PI) manualPhase -= TWO_PI;
                     double m = Math.sin(manualPhase) * 0.08;
@@ -530,7 +1067,7 @@ public class MainActivity extends Activity {
         return Math.tanh(x);
     }
 
-    private void stopAudio() {
+    private void stopSynth() {
         running = false;
         Thread t = audioThread;
         audioThread = null;
@@ -550,7 +1087,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        stopAudio();
+        stopSynth();
+        stopMediaPlayer();
     }
 
     private void label(LinearLayout root, String text) {
@@ -616,6 +1154,16 @@ public class MainActivity extends Activity {
             this.amDepth = amDepth;
             this.fmRate = fmRate;
             this.fmDepthHz = fmDepthHz;
+        }
+    }
+
+    private static class RifeEntry {
+        final String name;
+        final List<Double> freqs;
+
+        RifeEntry(String name, List<Double> freqs) {
+            this.name = name;
+            this.freqs = freqs;
         }
     }
 }
