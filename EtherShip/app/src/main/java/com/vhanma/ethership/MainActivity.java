@@ -48,6 +48,8 @@ public class MainActivity extends Activity {
             "https://gist.githubusercontent.com/tmiland/a3ce588bcd65738d91b4/raw/acc20b9e600d6fb92915f758a379fbd4139b98ca/CAFL.txt";
 
     private final List<Preset> etherPresets = new ArrayList<>();
+    private final List<Preset> bentovPresets = new ArrayList<>();
+    private final List<Preset> ninePresets = new ArrayList<>();
     private final List<Preset> orgonePresets = new ArrayList<>();
     private final List<Preset> rifePresets = new ArrayList<>();
     private final List<AudioDeviceInfo> outputDevices = new ArrayList<>();
@@ -120,7 +122,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Magnetic Mind Generator • Orgone • Rife • audio-frequency console");
+        sub.setText("Ether Ship • Bentov • The Nine • Orgone • Rife • frequency console");
         sub.setGravity(Gravity.CENTER);
         sub.setTextSize(14f);
         root.addView(sub);
@@ -130,7 +132,7 @@ public class MainActivity extends Activity {
         sectionSpinner = new Spinner(this);
         sectionSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"ETHER SHIP", "ORGONE", "RIFE"}));
+                new String[]{"ETHER SHIP", "BENTOV", "THE NINE", "ORGONE", "RIFE"}));
         root.addView(sectionSpinner);
         sectionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -357,6 +359,8 @@ public class MainActivity extends Activity {
                 "The surviving public Ether Ship descriptions document the Synthi AKS, Hammond organ, brain-wave analyzer, " +
                 "color-linked sound control, magnetic and laser thought tunnels, crystal projection, 24-channel EQ and a " +
                 "20-octave control system, but do not publish a fixed archival Hz table for telepathy or ET contact.\n\n" +
+                "BENTOV: primary-text values include body micromotion at 6.8–7.5 Hz, about 7.5 Hz for the Earth-ionosphere cavity in Bentov's model, about 7 Hz for whole-body resonance, 264/396/528 Hz as a harmonic example, and explicit beat examples of 50+60 and 10+12 Hz.\n\n" +
+                "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's 8 Hz and 7.83 Hz ELF work is kept as a separate bridge layer rather than mislabeled as a direct Nine transmission.\n\n" +
                 "ORGONE: Reich's original accumulator was a passive accumulator, not a fixed-Hz tone generator. " +
                 "The Orgone presets here reproduce frequencies published by later pulsed-orgone generator traditions.\n\n" +
                 "RIFE: historical RF references, CAFL labels and later frequency lists are preserved as experimental/archive data. " +
@@ -428,6 +432,122 @@ public class MainActivity extends Activity {
                         s(444, .20, 0.0), s(888, .10, -0.4),
                         s(1776, .06, 0.4), s(3552, .035, 0.0)
                 }, 0.20f));
+
+
+        bentovPresets.add(new Preset(
+                "Heart-Aorta Resonance • PRIMARY TEXT",
+                "Bentov gives body micromotion at about 6.8–7.5 Hz during deep meditation, with whole-body coherence centered near 7 Hz.",
+                new Osc[]{
+                        s(6.8, .12, -0.7), s(7.0, .14, 0.0), s(7.5, .12, 0.7)
+                }, 0.16f));
+
+        bentovPresets.add(new Preset(
+                "Earth-Ionosphere Coupling • PRIMARY + ENGINE",
+                "Bentov states an Earth-ionosphere resonance of about 7.5 cycles/second and proposes coupling to the body's 6.8–7.5 Hz micromotion. The carrier tones are an app rendering of that model.",
+                new Osc[]{
+                        s(7.5, .08, 0.0),
+                        am(264, .12, -0.6, 7.5, .65),
+                        am(396, .10, 0.0, 7.5, .60),
+                        am(528, .12, 0.6, 7.5, .65)
+                }, 0.18f));
+
+        bentovPresets.add(new Preset(
+                "Telepathic Coupling • 7 Hz MODEL",
+                "Bentov calls the approximately 7 Hz planetary/body resonance an ideal medium for a telepathic signal. This preset keeps 7 Hz exact and uses harmonically related carriers for output.",
+                new Osc[]{
+                        s(7.0, .08, 0.0),
+                        am(188.064575, .10, -0.8, 7.0, .70),
+                        am(376.129150, .10, -0.4, 7.0, .65),
+                        am(752.258301, .10, 0.0, 7.0, .60),
+                        am(1504.516602, .08, 0.4, 7.0, .55),
+                        am(3009.033203, .06, 0.8, 7.0, .50)
+                }, 0.18f));
+
+        bentovPresets.add(new Preset(
+                "Harmonic Bodies • PRIMARY EXAMPLE",
+                "Bentov's explicit piano example uses middle C at 264 Hz, G at 396 Hz and the octave at 528 Hz to illustrate resonance and higher harmonics.",
+                new Osc[]{
+                        s(264, .15, -0.6), s(396, .12, 0.0), s(528, .15, 0.6)
+                }, 0.22f));
+
+        bentovPresets.add(new Preset(
+                "Beat Demo • 50 + 60 = 10 Hz",
+                "Bentov's explicit beat-frequency example: 50 Hz and 60 Hz combine to produce a 10 Hz amplitude beat.",
+                new Osc[]{
+                        s(50, .18, -0.5), s(60, .18, 0.5)
+                }, 0.22f));
+
+        bentovPresets.add(new Preset(
+                "Beat Demo • 10 + 12 = 2 Hz",
+                "Bentov's second explicit beat-frequency example: 10 Hz and 12 Hz produce a 2 Hz beat.",
+                new Osc[]{
+                        s(10, .18, -0.5), s(12, .18, 0.5)
+                }, 0.22f));
+
+        bentovPresets.add(new Preset(
+                "4 / 7 Hz Magnetic Field Reference • PRIMARY TEXT",
+                "Bentov discusses prolonged exposure to pulsating magnetic fields at about 4 or 7 Hz in his physio-kundalini model. Preserved here as an historical frequency reference.",
+                new Osc[]{
+                        s(4.0, .12, -0.5), s(7.0, .12, 0.5)
+                }, 0.14f));
+
+        ninePresets.add(new Preset(
+                "The Nine Tonal Language • 98.6 MHz PRIMARY TRANSCRIPT",
+                "In The Only Planet of Choice, Puharich asks whether the tonal range of The Nine's language is 98.6 megacycles; Tom answers yes. 98.6 megacycles = 98.6 MHz. This is stored exactly as an RF reference and is above phone PCM range.",
+                new Osc[]{
+                        s(98600000.0, .0, 0.0)
+                }, 0.10f));
+
+        ninePresets.add(new Preset(
+                "98.6 MHz Octave Downconversion • DERIVED",
+                "Exact powers-of-two divisions of the reported 98.6 MHz tonal-language value. These are mathematically derived, not claimed in the transcript.",
+                new Osc[]{
+                        s(48144.531250, .035, -0.9),
+                        s(24072.265625, .045, -0.7),
+                        s(12036.132813, .055, -0.5),
+                        s(6018.066406, .065, -0.3),
+                        s(3009.033203, .075, -0.1),
+                        s(1504.516602, .085, 0.1),
+                        s(752.258301, .095, 0.3),
+                        s(376.129150, .105, 0.5),
+                        s(188.064575, .115, 0.7)
+                }, 0.16f));
+
+        ninePresets.add(new Preset(
+                "Puharich ELF Bridge • 8 Hz",
+                "Puharich later described 8 Hz as a universal ELF magnetic frequency associated in his experiments with healers and crystals. This is a Puharich bridge preset, not a direct statement from The Nine transcript.",
+                new Osc[]{
+                        s(8.0, .08, 0.0),
+                        am(188.064575, .10, -0.7, 8.0, .65),
+                        am(376.129150, .10, -0.3, 8.0, .60),
+                        am(752.258301, .10, 0.3, 8.0, .55),
+                        am(1504.516602, .08, 0.7, 8.0, .50)
+                }, 0.17f));
+
+        ninePresets.add(new Preset(
+                "Schumann Contact Bridge • 7.83 Hz PUHARICH LATER",
+                "Puharich's later ELF material singles out 7.83 Hz as a beneficial Schumann-linked rate. Preserved separately from the 98.6 MHz Nine transcript value.",
+                new Osc[]{
+                        s(7.83, .08, 0.0),
+                        am(188.064575, .10, -0.8, 7.83, .70),
+                        am(376.129150, .10, -0.4, 7.83, .65),
+                        am(752.258301, .10, 0.0, 7.83, .60),
+                        am(1504.516602, .08, 0.4, 7.83, .55),
+                        am(3009.033203, .06, 0.8, 7.83, .50)
+                }, 0.17f));
+
+        ninePresets.add(new Preset(
+                "The Nine Contact Sequence • DERIVED PROTOCOL",
+                "Experimental contact stack combining the transcript's 98.6 MHz lineage through octave-downconversion with Puharich's 8 Hz and 7.83 Hz ELF work. The Nine's published meditation protocol calls for an 18-minute synchronized session and allows sound before meditation.",
+                new Osc[]{
+                        s(8.0, .05, -0.9), s(7.83, .05, 0.9),
+                        am(188.064575, .09, -0.7, 7.83, .60),
+                        am(376.129150, .09, -0.4, 8.0, .60),
+                        am(752.258301, .09, -0.1, 7.83, .55),
+                        am(1504.516602, .08, 0.2, 8.0, .50),
+                        am(3009.033203, .07, 0.5, 7.83, .45),
+                        am(6018.066406, .05, 0.8, 8.0, .40)
+                }, 0.15f));
 
         orgonePresets.add(new Preset(
                 "Orgone Pulse • 3.5 Hz",
@@ -506,13 +626,15 @@ public class MainActivity extends Activity {
     }
 
     private List<Preset> currentPresets() {
-        if (activeSection == 1) return orgonePresets;
-        if (activeSection == 2) return rifePresets;
+        if (activeSection == 1) return bentovPresets;
+        if (activeSection == 2) return ninePresets;
+        if (activeSection == 3) return orgonePresets;
+        if (activeSection == 4) return rifePresets;
         return etherPresets;
     }
 
     private void selectSection(int section) {
-        activeSection = Math.max(0, Math.min(2, section));
+        activeSection = Math.max(0, Math.min(4, section));
         List<Preset> list = currentPresets();
         String[] names = new String[list.size()];
         for (int i = 0; i < list.size(); i++) names[i] = list.get(i).name;
@@ -539,7 +661,7 @@ public class MainActivity extends Activity {
         b.append(p.description).append("\n\nHz: ");
         for (int i = 0; i < p.oscs.length; i++) {
             if (i > 0) b.append(", ");
-            b.append(trim(p.oscs[i].freq));
+            b.append(formatFrequency(p.oscs[i].freq));
         }
         presetInfo.setText(b.toString());
     }
@@ -892,7 +1014,7 @@ public class MainActivity extends Activity {
         StringBuilder b = new StringBuilder(e.name).append("\nHz: ");
         for (int i = 0; i < e.freqs.size(); i++) {
             if (i > 0) b.append(", ");
-            b.append(trim(e.freqs.get(i)));
+            b.append(formatFrequency(e.freqs.get(i)));
         }
         rifeSelectedReadout.setText(b.toString());
     }
@@ -1112,6 +1234,12 @@ public class MainActivity extends Activity {
     private static String trim(double n) {
         if (Math.abs(n - Math.rint(n)) < 0.0001) return String.format(Locale.US, "%.0f", n);
         return String.format(Locale.US, "%.3f", n);
+    }
+
+    private static String formatFrequency(double n) {
+        if (n >= 1000000.0) return String.format(Locale.US, "%.6f MHz", n / 1000000.0);
+        if (n >= 1000.0) return trim(n) + " Hz";
+        return trim(n) + " Hz";
     }
 
     private abstract static class SimpleSeek implements SeekBar.OnSeekBarChangeListener {
