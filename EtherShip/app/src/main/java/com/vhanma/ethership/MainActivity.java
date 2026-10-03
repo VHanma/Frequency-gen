@@ -360,7 +360,7 @@ public class MainActivity extends Activity {
                 "color-linked sound control, magnetic and laser thought tunnels, crystal projection, 24-channel EQ and a " +
                 "20-octave control system, but do not publish a fixed archival Hz table for telepathy or ET contact.\n\n" +
                 "BENTOV: primary-text values include body micromotion at 6.8–7.5 Hz, about 7.5 Hz for the Earth-ionosphere cavity in Bentov's model, about 7 Hz for whole-body resonance, 264/396/528 Hz as a harmonic example, and explicit beat examples of 50+60 and 10+12 Hz.\n\n" +
-                "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's 8 Hz and 7.83 Hz ELF work is kept as a separate bridge layer rather than mislabeled as a direct Nine transmission.\n\n" +
+                "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. That value is preserved whole as a primary external-hardware target. No octave-downconversion is used as a substitute. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's 8 Hz and 7.83 Hz ELF work is kept as support/modulation rather than mislabeled as the 98.6 MHz carrier itself.\n\n" +
                 "ORGONE: Reich's original accumulator was a passive accumulator, not a fixed-Hz tone generator. " +
                 "The Orgone presets here reproduce frequencies published by later pulsed-orgone generator traditions.\n\n" +
                 "RIFE: historical RF references, CAFL labels and later frequency lists are preserved as experimental/archive data. " +
@@ -499,21 +499,6 @@ public class MainActivity extends Activity {
                 }, 0.10f));
 
         ninePresets.add(new Preset(
-                "98.6 MHz Octave Downconversion • DERIVED",
-                "Exact powers-of-two divisions of the reported 98.6 MHz tonal-language value. These are mathematically derived, not claimed in the transcript.",
-                new Osc[]{
-                        s(48144.531250, .035, -0.9),
-                        s(24072.265625, .045, -0.7),
-                        s(12036.132813, .055, -0.5),
-                        s(6018.066406, .065, -0.3),
-                        s(3009.033203, .075, -0.1),
-                        s(1504.516602, .085, 0.1),
-                        s(752.258301, .095, 0.3),
-                        s(376.129150, .105, 0.5),
-                        s(188.064575, .115, 0.7)
-                }, 0.16f));
-
-        ninePresets.add(new Preset(
                 "Puharich ELF Bridge • 8 Hz",
                 "Puharich later described 8 Hz as a universal ELF magnetic frequency associated in his experiments with healers and crystals. This is a Puharich bridge preset, not a direct statement from The Nine transcript.",
                 new Osc[]{
@@ -537,17 +522,13 @@ public class MainActivity extends Activity {
                 }, 0.17f));
 
         ninePresets.add(new Preset(
-                "The Nine Contact Sequence • DERIVED PROTOCOL",
-                "Experimental contact stack combining the transcript's 98.6 MHz lineage through octave-downconversion with Puharich's 8 Hz and 7.83 Hz ELF work. The Nine's published meditation protocol calls for an 18-minute synchronized session and allows sound before meditation.",
+                "The Nine Whole Contact • 98.6 MHz PRIMARY",
+                "Keeps the reported 98.6 MHz tonal-language value whole as the PRIMARY HARDWARE TARGET. 8 Hz and 7.83 Hz are support/modulation layers only and do not replace or downconvert the primary frequency. The published meditation protocol calls for an 18-minute synchronized session and allows sound before meditation.",
                 new Osc[]{
-                        s(8.0, .05, -0.9), s(7.83, .05, 0.9),
-                        am(188.064575, .09, -0.7, 7.83, .60),
-                        am(376.129150, .09, -0.4, 8.0, .60),
-                        am(752.258301, .09, -0.1, 7.83, .55),
-                        am(1504.516602, .08, 0.2, 8.0, .50),
-                        am(3009.033203, .07, 0.5, 7.83, .45),
-                        am(6018.066406, .05, 0.8, 8.0, .40)
-                }, 0.15f));
+                        s(98600000.0, .0, 0.0),
+                        s(8.0, .06, -0.5),
+                        s(7.83, .06, 0.5)
+                }, 0.14f));
 
         orgonePresets.add(new Preset(
                 "Orgone Pulse • 3.5 Hz",
@@ -658,11 +639,30 @@ public class MainActivity extends Activity {
     private void showPresetInfo(Preset p) {
         if (p == null || presetInfo == null) return;
         StringBuilder b = new StringBuilder();
-        b.append(p.description).append("\n\nHz: ");
-        for (int i = 0; i < p.oscs.length; i++) {
-            if (i > 0) b.append(", ");
-            b.append(formatFrequency(p.oscs[i].freq));
+        b.append(p.description);
+
+        List<Double> hardwareTargets = new ArrayList<>();
+        List<Double> pcmTargets = new ArrayList<>();
+        for (Osc o : p.oscs) {
+            if (o.freq >= 96000.0) hardwareTargets.add(o.freq);
+            else pcmTargets.add(o.freq);
         }
+
+        if (!hardwareTargets.isEmpty()) {
+            b.append("\n\nPRIMARY HARDWARE TARGET");
+            for (double f : hardwareTargets) {
+                b.append("\n• ").append(formatFrequency(f)).append(" • WHOLE / NO DOWNCONVERSION");
+            }
+        }
+
+        if (!pcmTargets.isEmpty()) {
+            b.append("\n\nPCM / MODULATION SUPPORT: ");
+            for (int i = 0; i < pcmTargets.size(); i++) {
+                if (i > 0) b.append(", ");
+                b.append(formatFrequency(pcmTargets.get(i)));
+            }
+        }
+
         presetInfo.setText(b.toString());
     }
 
