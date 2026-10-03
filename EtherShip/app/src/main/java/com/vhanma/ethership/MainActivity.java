@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private final List<Preset> etherPresets = new ArrayList<>();
     private final List<Preset> bentovPresets = new ArrayList<>();
     private final List<Preset> ninePresets = new ArrayList<>();
+    private final List<Preset> bodyPresets = new ArrayList<>();
     private final List<Preset> orgonePresets = new ArrayList<>();
     private final List<Preset> rifePresets = new ArrayList<>();
     private final List<AudioDeviceInfo> outputDevices = new ArrayList<>();
@@ -137,7 +138,7 @@ public class MainActivity extends Activity {
         sectionSpinner = new Spinner(this);
         sectionSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item,
-                new String[]{"ETHER SHIP", "BENTOV", "THE NINE", "ORGONE", "RIFE"}));
+                new String[]{"ETHER SHIP", "BENTOV", "THE NINE", "HUMAN BODY", "ORGONE", "RIFE"}));
         root.addView(sectionSpinner);
         sectionSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -412,16 +413,13 @@ public class MainActivity extends Activity {
         TextView notes = new TextView(this);
         notes.setText(
                 "SOURCE LABELS\n" +
-                "ETHER SHIP: documented hardware architecture is separated from later/reconstructed frequency ideas. " +
-                "The surviving public Ether Ship descriptions document the Synthi AKS, Hammond organ, brain-wave analyzer, " +
-                "color-linked sound control, magnetic and laser thought tunnels, crystal projection, 24-channel EQ and a " +
-                "20-octave control system, but do not publish a fixed archival Hz table for telepathy or ET contact.\n\n" +
+                "ETHER SHIP: the original 1970s hardware description still does not publish a fixed telepathy/ET Hz table. Later Van De Bogart xenolinguistic work explicitly uses protein/microtubule frequencies. The app now stores the original Bandyopadhyay kHz/MHz/GHz/THz values whole instead of their audible sonifications.\n\n" +
                 "BENTOV: primary-text values include body micromotion at 6.8–7.5 Hz, about 7.5 Hz for the Earth-ionosphere cavity in Bentov's model, about 7 Hz for whole-body resonance, 264/396/528 Hz as a harmonic example, and explicit beat examples of 50+60 and 10+12 Hz.\n\n" +
                 "THE NINE: the published transcript gives 98.6 megacycles (98.6 MHz) as the tonal range of their language. That value is preserved whole as a primary external-hardware target. No octave-downconversion is used as a substitute. The 18-minute synchronized meditation and sound/color preparation come from the same published contact material. Puharich's later source values 6 Hz, 6.66 Hz, 7.83 Hz, 8 Hz, 10.80 Hz and 11 Hz are kept as a separate ELF/psi layer rather than mislabeled as the 98.6 MHz carrier itself.\n\n" +
+                "HUMAN BODY: MHz organ/body ranges are copied as source claims from your body-frequency documents. They are kept as ranges and are not converted to audio octaves.\n\n" +
                 "ORGONE: Reich's original accumulator was a passive accumulator, not a fixed-Hz tone generator. " +
                 "The Orgone presets here reproduce frequencies published by later pulsed-orgone generator traditions.\n\n" +
-                "RIFE: historical RF references, CAFL labels and later frequency lists are preserved as experimental/archive data. " +
-                "The app does not claim that a listed frequency diagnoses or treats a medical condition."
+                "RIFE: the exact 1936 RF table, Beam Ray carrier/sideband architecture, later audio lists, and CAFL library are kept in separate source families. Lists known to have been halved/divided are never substituted for the original RF values. The app stores these as historical/experimental frequency data."
         );
         notes.setTextSize(12f);
         root.addView(notes);
@@ -490,6 +488,40 @@ public class MainActivity extends Activity {
                         s(1776, .06, 0.4), s(3552, .035, 0.0)
                 }, 0.20f));
 
+
+
+        etherPresets.add(new Preset(
+                "Tubulin Resonances • EXACT ORIGINAL VALUES",
+                "Van De Bogart's later Ether Ship/xenolinguistic work explicitly uses protein and microtubule frequency research. These are the ORIGINAL measured tubulin resonance values from the Bandyopadhyay research line, kept in MHz/GHz/THz with no sonification, octave shift, division or reduction.",
+                new Osc[]{
+                        s(37000000.0, 0, 0), s(46000000.0, 0, 0), s(91000000.0, 0, 0),
+                        s(137000000.0, 0, 0), s(176000000.0, 0, 0), s(281000000.0, 0, 0),
+                        s(430000000.0, 0, 0),
+                        s(9000000000.0, 0, 0), s(19000000000.0, 0, 0), s(78000000000.0, 0, 0),
+                        s(160000000000.0, 0, 0), s(224000000000.0, 0, 0),
+                        s(28000000000000.0, 0, 0), s(88000000000000.0, 0, 0),
+                        s(127000000000000.0, 0, 0), s(340000000000000.0, 0, 0)
+                }, 0.10f));
+
+        etherPresets.add(new Preset(
+                "Microtubule Resonances • EXACT ORIGINAL VALUES",
+                "Original microtubule resonance peaks cited in the same research lineage used by Van De Bogart. Kept whole. The 120/240/320 kHz values are not divided versions of the MHz/GHz values; they are separately reported peaks.",
+                new Osc[]{
+                        s(120000.0, 0, 0), s(240000.0, 0, 0), s(320000.0, 0, 0),
+                        s(12000000.0, 0, 0), s(20000000.0, 0, 0), s(22000000.0, 0, 0),
+                        s(30000000.0, 0, 0), s(101000000.0, 0, 0), s(113000000.0, 0, 0),
+                        s(185000000.0, 0, 0), s(204000000.0, 0, 0),
+                        s(3000000000.0, 0, 0), s(7000000000.0, 0, 0),
+                        s(13000000000.0, 0, 0), s(18000000000.0, 0, 0)
+                }, 0.10f));
+
+        etherPresets.add(new Preset(
+                "Tubulin Pump / Growth Points • EXACT EXPERIMENT VALUES",
+                "Exact electromagnetic pump/common-region values reported in the tubulin experiments: 0.225 MHz, 2.25 MHz, 3.7 MHz, 3.77 MHz and 37 MHz. These are kept at their original scale.",
+                new Osc[]{
+                        s(225000.0, 0, 0), s(2250000.0, 0, 0), s(3700000.0, 0, 0),
+                        s(3770000.0, 0, 0), s(37000000.0, 0, 0)
+                }, 0.10f));
 
         bentovPresets.add(new Preset(
                 "Heart-Aorta Resonance • PRIMARY TEXT",
@@ -599,6 +631,84 @@ public class MainActivity extends Activity {
                         s(7.83, .06, 0.5)
                 }, 0.14f));
 
+
+        bodyPresets.add(new Preset(
+                "Whole Body • 62–78 MHz • USER DOC TABLE",
+                "Your human-body frequency documents list the whole human body at 62–78 MHz. Both original range endpoints are stored whole.",
+                new Osc[]{s(62000000.0, 0, -0.5), s(78000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Brain Range • 72–90 MHz • USER DOC TABLE",
+                "Your documents list the brain at 72–90 MHz, with normal brain at 72 MHz and a separate 80–82 MHz entry described as genius brain.",
+                new Osc[]{s(72000000.0, 0, -0.7), s(80000000.0, 0, -0.2),
+                        s(82000000.0, 0, 0.2), s(90000000.0, 0, 0.7)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Head / Neck • 72–78 MHz • USER DOC TABLE",
+                "Exact source range from your body-frequency documents.",
+                new Osc[]{s(72000000.0, 0, -0.5), s(78000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Body Below Neck • 60–68 MHz • USER DOC TABLE",
+                "Exact source range from your body-frequency documents.",
+                new Osc[]{s(60000000.0, 0, -0.5), s(68000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Thyroid / Parathyroid • 62–68 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(62000000.0, 0, -0.5), s(68000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Thymus • 65–68 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(65000000.0, 0, -0.5), s(68000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Heart • 67–70 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(67000000.0, 0, -0.5), s(70000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Lungs • 58–65 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(58000000.0, 0, -0.5), s(65000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Liver • 55–60 MHz • SOURCE A",
+                "One of your body-frequency documents gives 55–60 MHz for liver. Another copy has a conflicting/reversed liver range, so this preset preserves the clearer 55–60 MHz source instead of silently averaging them.",
+                new Osc[]{s(55000000.0, 0, -0.5), s(60000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Stomach • 58–65 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(58000000.0, 0, -0.5), s(65000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Pancreas • 60–80 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(60000000.0, 0, -0.5), s(80000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Descending Colon • 58–63 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(58000000.0, 0, -0.5), s(63000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Ascending Colon • 50–60 MHz",
+                "Exact range stated in your organ-frequency table.",
+                new Osc[]{s(50000000.0, 0, -0.5), s(60000000.0, 0, 0.5)}, 0.10f));
+
+        bodyPresets.add(new Preset(
+                "Full Body Source Mix • EXACT TABLE POINTS",
+                "Composite of exact values appearing in your body/organ table. No octave reduction: 50, 55, 58, 60, 62, 63, 65, 67, 68, 70, 72, 78, 80, 82 and 90 MHz.",
+                new Osc[]{
+                        s(50000000.0,0,0), s(55000000.0,0,0), s(58000000.0,0,0),
+                        s(60000000.0,0,0), s(62000000.0,0,0), s(63000000.0,0,0),
+                        s(65000000.0,0,0), s(67000000.0,0,0), s(68000000.0,0,0),
+                        s(70000000.0,0,0), s(72000000.0,0,0), s(78000000.0,0,0),
+                        s(80000000.0,0,0), s(82000000.0,0,0), s(90000000.0,0,0)
+                }, 0.10f));
+
         orgonePresets.add(new Preset(
                 "Orgone Pulse • 3.5 Hz",
                 "Later pulsed-orgone tradition preset: 3.5 Hz modulation.",
@@ -623,6 +733,49 @@ public class MainActivity extends Activity {
                 "Orgone Pulse • 14.1 Hz",
                 "Later pulsed-orgone tradition preset: 14.1 Hz modulation.",
                 new Osc[]{am(444, .16, 0, 14.1, .75), am(888, .08, 0, 14.1, .70)}, 0.18f));
+
+
+        rifePresets.add(new Preset(
+                "Rife Original RF • ALL 17 FINE-TUNED VALUES",
+                "The full 1936 Hoyland/Rife high-RF table. These values are preserved exactly as published and are NOT the later halved/divided audio lists.",
+                new Osc[]{
+                        s(191803.0,0,0), s(139200.0,0,0), s(416510.0,0,0),
+                        s(769035.0,0,0), s(1607450.0,0,0), s(1529520.0,0,0),
+                        s(233000.0,0,0), s(426862.0,0,0), s(477660.0,0,0),
+                        s(549070.0,0,0), s(719150.0,0,0), s(788700.0,0,0),
+                        s(234000.0,0,0), s(369433.0,0,0), s(769000.0,0,0),
+                        s(759450.0,0,0), s(1445180.0,0,0)
+                }, 0.10f));
+
+        rifePresets.add(new Preset(
+                "Beam Ray 3.30 MHz + Exact Sideband Drivers",
+                "Historical mix architecture: 3.30 MHz carrier plus Hoyland's published audio sideband drivers. The 3.30 MHz carrier stays whole; the audio values are kept at their original stated values.",
+                new Osc[]{
+                        s(3300000.0,0,0),
+                        s(7870,.035,-.9), s(10200,.035,-.8), s(8020,.035,-.7),
+                        s(17220,.035,-.6), s(21275,.035,-.5), s(20080,.035,-.4),
+                        s(9500,.035,-.3), s(7660,.035,-.2), s(7270,.035,-.1),
+                        s(8450,.035,0), s(6600,.035,.1), s(1200,.035,.2),
+                        s(8300,.035,.3), s(16000,.035,.4), s(6900,.035,.5),
+                        s(18620,.035,.6), s(2400,.035,.7)
+                }, 0.10f));
+
+        rifePresets.add(new Preset(
+                "Rife / Beam Ray Carrier References",
+                "Known carrier references kept at their original scale: 3.30 MHz and 3.80 MHz for Beam Ray-era instruments; 4.68 MHz for the later AZ-58 lineage.",
+                new Osc[]{s(3300000.0,0,-.5), s(3800000.0,0,0), s(4680000.0,0,.5)}, 0.10f));
+
+        rifePresets.add(new Preset(
+                "BX Exact Chain • NO REDUCTION",
+                "BX source chain kept whole: 1,607,450 Hz original fine-tuned RF; 3,214,900 Hz second harmonic used by Hoyland; 3,300,000 Hz carrier reference; 21,275 Hz sideband driver.",
+                new Osc[]{s(1607450.0,0,0), s(3214900.0,0,0), s(3300000.0,0,0),
+                        s(21275,.08,0)}, 0.10f));
+
+        rifePresets.add(new Preset(
+                "BY Exact Chain • NO REDUCTION",
+                "BY source chain kept whole: 1,529,520 Hz original fine-tuned RF; 3,059,040 Hz second harmonic; 3,300,000 Hz carrier reference; 20,080 Hz sideband driver.",
+                new Osc[]{s(1529520.0,0,0), s(3059040.0,0,0), s(3300000.0,0,0),
+                        s(20080,.08,0)}, 0.10f));
 
         rifePresets.add(new Preset(
                 "Rife Audio Core • LATER LIST",
@@ -678,13 +831,14 @@ public class MainActivity extends Activity {
     private List<Preset> currentPresets() {
         if (activeSection == 1) return bentovPresets;
         if (activeSection == 2) return ninePresets;
-        if (activeSection == 3) return orgonePresets;
-        if (activeSection == 4) return rifePresets;
+        if (activeSection == 3) return bodyPresets;
+        if (activeSection == 4) return orgonePresets;
+        if (activeSection == 5) return rifePresets;
         return etherPresets;
     }
 
     private void selectSection(int section) {
-        activeSection = Math.max(0, Math.min(4, section));
+        activeSection = Math.max(0, Math.min(5, section));
         List<Preset> list = currentPresets();
         String[] names = new String[list.size()];
         for (int i = 0; i < list.size(); i++) names[i] = list.get(i).name;
@@ -705,7 +859,10 @@ public class MainActivity extends Activity {
 
         double primary = 0.0;
         for (Osc o : activePreset.oscs) {
-            if (o.freq >= 96000.0 && o.freq > primary) primary = o.freq;
+            if (o.freq >= 96000.0) {
+                primary = o.freq;
+                break;
+            }
         }
         if (primary > 0.0) {
             wholeHardwareTargetHz = primary;
@@ -1344,10 +1501,30 @@ public class MainActivity extends Activity {
         return String.format(Locale.US, "%.3f", n);
     }
 
+    private static String cleanNumber(double n) {
+        String s = String.format(Locale.US, "%.9f", n);
+        while (s.contains(".") && s.endsWith("0")) s = s.substring(0, s.length() - 1);
+        if (s.endsWith(".")) s = s.substring(0, s.length() - 1);
+        return s;
+    }
+
+    private static String rawHz(double n) {
+        if (Math.abs(n - Math.rint(n)) < 0.0000001) {
+            return String.format(Locale.US, "%.0f", n) + " Hz";
+        }
+        return cleanNumber(n) + " Hz";
+    }
+
     private static String formatFrequency(double n) {
-        if (n >= 1000000.0) return String.format(Locale.US, "%.6f MHz", n / 1000000.0);
-        if (n >= 1000.0) return trim(n) + " Hz";
-        return trim(n) + " Hz";
+        if (n >= 1000000000000.0)
+            return cleanNumber(n / 1000000000000.0) + " THz (" + rawHz(n) + ")";
+        if (n >= 1000000000.0)
+            return cleanNumber(n / 1000000000.0) + " GHz (" + rawHz(n) + ")";
+        if (n >= 1000000.0)
+            return cleanNumber(n / 1000000.0) + " MHz (" + rawHz(n) + ")";
+        if (n >= 100000.0)
+            return cleanNumber(n / 1000.0) + " kHz (" + rawHz(n) + ")";
+        return rawHz(n);
     }
 
     private abstract static class SimpleSeek implements SeekBar.OnSeekBarChangeListener {
